@@ -46,6 +46,7 @@ git lfs install
 
 ```bash
 git clone https://github.com/marginsystems/horror-game-unreal-engine-5.git
+cd horror-game-unreal-engine-5
 ```
 
 ```bash
