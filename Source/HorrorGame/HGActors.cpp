@@ -3,6 +3,7 @@
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "HGGameMode.h"
+#include "HGLevel.h"
 #include "HGMonster.h"
 #include "HGPlayer.h"
 #include "Kismet/GameplayStatics.h"
@@ -193,10 +194,13 @@ void AHGThrown::Explode()
 
 	if (Game)
 	{
+		// Walls stop the blast: it only reaches what it has a clear line to.
+		const AHGLevel* Level = Game->GetLevel();
+		auto bClearTo = [Level, Here](const FVector& Target) { return !Level || Level->HasLineOfSight(Here, Target); };
 		Game->ReportNoise(Here, 6000.f, 1.f);
 		if (AHGMonster* Monster = Game->GetMonster())
 		{
-			if (FVector::Dist2D(Monster->GetActorLocation(), Here) < 1500.f)
+			if (FVector::Dist2D(Monster->GetActorLocation(), Here) < 1500.f && bClearTo(Monster->GetActorLocation()))
 			{
 				Monster->Stun(10.f);
 				Game->Say(TEXT("The grenade worked. It actually worked."), 4.f);
@@ -208,7 +212,7 @@ void AHGThrown::Explode()
 		}
 		if (AHGPlayer* Player = PlayerOf(this))
 		{
-			if (FVector::Dist2D(Player->GetActorLocation(), Here) < 420.f)
+			if (FVector::Dist2D(Player->GetActorLocation(), Here) < 420.f && bClearTo(Player->GetActorLocation()))
 			{
 				Game->PlayerDied(TEXT("stood next to the only weapon that works"));
 			}

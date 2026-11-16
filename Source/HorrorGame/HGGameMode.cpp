@@ -35,6 +35,7 @@ void AHGGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 	Variant = HG::VariantFromKey(Key);
 	bBot = FParse::Param(FCommandLine::Get(), TEXT("HGBot"));
 	bShots = FParse::Param(FCommandLine::Get(), TEXT("HGShots"));
+	bCatch = FParse::Param(FCommandLine::Get(), TEXT("HGCatch"));
 
 	// Engine notices ("Preparing mesh distance fields...") have no place on a horror game's screen.
 	GEngine->bEnableOnScreenDebugMessages = false;
@@ -123,10 +124,9 @@ void AHGGameMode::ReportNoise(const FVector& Location, float Radius, float HoldS
 	{
 		return;
 	}
-	if (FVector::Dist2D(Monster->GetActorLocation(), Location) <= Radius)
+	if (FVector::Dist2D(Monster->GetActorLocation(), Location) <= Radius && Monster->HearNoise(Location, HoldSeconds, bFootstep))
 	{
 		++NoisesHeard;
-		Monster->HearNoise(Location, HoldSeconds, bFootstep);
 	}
 }
 
@@ -237,7 +237,8 @@ void AHGGameMode::Tick(float DeltaSeconds)
 		}
 	}
 
-	if (bBot) { TickBot(DeltaSeconds, Player); }
+	if (bBot && bCatch) { TickCatchBot(DeltaSeconds, Player); }
+	else if (bBot) { TickBot(DeltaSeconds, Player); }
 	if (bShots) { TickShots(DeltaSeconds, Player); }
 }
 
@@ -246,6 +247,35 @@ void AHGGameMode::TickBot(float Dt, AHGPlayer* Player)
 	// Plays the round with teleports instead of legs, and checks the rules hold:
 	// a weapon lures the monster, every fuse can be collected, the exit ends the round,
 	// and (second half) being next to the monster ends it the other way.
+	// First, real legs for two seconds: the player must be standing on the floor and able to walk.
+	if (WalkSeconds < 2.f)
+	{
+		if (WalkSeconds == 0.f)
+		{
+			TArray<FIntPoint> Out;
+			Level->FindPath(Level->PlayerTile, Level->ExitTile, Out);
+			WalkFrom = Player->GetActorLocation();
+			WalkDirection = Out.Num() > 0 ? (Level->ToWorld(Out[0]) - Level->ToWorld(Level->PlayerTile)).GetSafeNormal() : FVector::ForwardVector;
+		}
+		Monster->Stun(0.5f);
+		Player->AddMovementInput(WalkDirection, 1.f);
+		WalkSeconds += Dt;
+		if (WalkSeconds >= 2.f)
+		{
+			const FVector Now = Player->GetActorLocation();
+			const float Walked = FVector::Dist2D(Now, WalkFrom);
+			const bool bStanding = FMath::Abs(Now.Z - 88.f) < 25.f;
+			UE_LOG(LogHG, Log, TEXT("HGTEST WALK %s walked=%d z=%d"), (Walked > 150.f && bStanding) ? TEXT("PASS") : TEXT("FAIL"),
+				FMath::RoundToInt32(Walked), FMath::RoundToInt32(Now.Z));
+			if (Walked <= 150.f || !bStanding)
+			{
+				UE_LOG(LogHG, Log, TEXT("HGTEST RESULT FAIL walk"));
+				Finish(1);
+			}
+		}
+		return;
+	}
+
 	BotTimer += Dt;
 	if (BotTimer < 0.6f)
 	{
@@ -272,7 +302,8 @@ void AHGGameMode::TickBot(float Dt, AHGPlayer* Player)
 	}
 	if (Step == 2)
 	{
-		UE_LOG(LogHG, Log, TEXT("HGTEST LURE mood=%s heard=%d"), *Monster->Mood(), NoisesHeard);
+		bLured = NoisesHeard > 0 && Monster->Mood() == TEXT("investigating");
+		UE_LOG(LogHG, Log, TEXT("HGTEST LURE %s mood=%s heard=%d"), bLured ? TEXT("PASS") : TEXT("FAIL"), *Monster->Mood(), NoisesHeard);
 		Monster->Stun(10000.f);
 		return;
 	}
@@ -291,8 +322,37 @@ void AHGGameMode::TickBot(float Dt, AHGPlayer* Player)
 	}
 	if (FuseIndex == Level->FuseTiles.Num() + 1)
 	{
-		const bool bGood = bWon && Fuses == FusesTotal && NoisesHeard > 0;
-		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s won=%d fuses=%d/%d heard=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bWon ? 1 : 0, Fuses, FusesTotal, NoisesHeard);
+		const bool bGood = bWon && Fuses == FusesTotal && bLured;
+		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s won=%d fuses=%d/%d lured=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bWon ? 1 : 0, Fuses, FusesTotal, bLured ? 1 : 0);
+		Finish(bGood ? 0 : 1);
+	}
+}
+
+void AHGGameMode::TickCatchBot(float Dt, AHGPlayer* Player)
+{
+	// Stands two tiles from the monster with its back turned, makes a noise, and waits to die.
+	BotTimer += Dt;
+	if (BotStep == 0)
+	{
+		TArray<FIntPoint> Tiles;
+		Level->FindPath(Level->ToTile(Monster->GetActorLocation()), Level->PlayerTile, Tiles);
+		const FIntPoint Spot = Tiles.Num() > 1 ? Tiles[1] : Level->PlayerTile;
+		Player->GiveItem(EHGItem::Pistol);
+		Player->SetActorLocation(Level->ToWorld(Spot, 100.f));
+		Player->LookAt(Player->EyeLocation() + (Player->GetActorLocation() - Monster->GetActorLocation()));
+		BotStep = 1;
+		BotTimer = 0.f;
+	}
+	else if (BotStep == 1 && BotTimer > 0.5f)
+	{
+		Player->UseItem();
+		BotStep = 2;
+		BotTimer = 0.f;
+	}
+	else if (BotStep == 2 && (bOver || BotTimer > 20.f))
+	{
+		const bool bGood = bOver && !bWon;
+		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s caught=%d after=%ds"), bGood ? TEXT("PASS") : TEXT("FAIL"), bGood ? 1 : 0, FMath::RoundToInt32(BotTimer));
 		Finish(bGood ? 0 : 1);
 	}
 }

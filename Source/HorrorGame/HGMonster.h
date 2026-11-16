@@ -27,8 +27,8 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	void Setup(EHGMonster InKind, AHGLevel* InLevel);
-	/** Something made a sound it can hear. It goes there and lingers for HoldSeconds. */
-	void HearNoise(const FVector& Location, float HoldSeconds, bool bFootstep);
+	/** Something made a sound it can hear. It goes there and lingers for HoldSeconds. False when it ignores it. */
+	bool HearNoise(const FVector& Location, float HoldSeconds, bool bFootstep);
 	void Stun(float Seconds);
 
 	const TCHAR* DisplayName() const;

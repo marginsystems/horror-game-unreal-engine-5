@@ -15,7 +15,8 @@ class AHGPlayer;
  * and decides when the player has escaped or been caught.
  *
  * Pick the preview with ?Variant=clinic|office|mine on the map URL or -Variant= on the command line.
- * -HGBot plays the round by itself and quits (a logic check); -HGShots saves screenshots and quits.
+ * -HGBot plays the round by itself and quits (a logic check); -HGBot -HGCatch checks the monster
+ * catches a player who stands still; -HGShots saves screenshots and quits.
  */
 UCLASS()
 class AHGGameMode : public AGameModeBase
@@ -54,6 +55,7 @@ public:
 private:
 	void Win();
 	void TickBot(float Dt, AHGPlayer* Player);
+	void TickCatchBot(float Dt, AHGPlayer* Player);
 	void TickShots(float Dt, AHGPlayer* Player);
 	void Finish(int32 ExitCode);
 
@@ -71,6 +73,11 @@ private:
 	bool bWon = false;
 	bool bBot = false;
 	bool bShots = false;
+	bool bCatch = false;
+	bool bLured = false;
+	float WalkSeconds = 0.f;
+	FVector WalkFrom = FVector::ZeroVector;
+	FVector WalkDirection = FVector::ZeroVector;
 	int32 BotStep = 0;
 	float BotTimer = 0.f;
 	int32 ShotStep = 0;

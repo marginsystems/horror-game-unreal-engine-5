@@ -1,7 +1,8 @@
 #!/bin/bash
 # Checks the maps, then lets the game play each preview by itself with no window.
-# The bot fires a weapon (the monster must come and look), collects every fuse and
-# leaves through the exit. Prints PASS or FAIL per preview.
+# The bot walks, fires a weapon (the monster must come and look), collects every fuse
+# and leaves through the exit. A second run stands still near the monster and must be
+# caught. Prints PASS or FAIL for each.
 #
 #   Scripts/test.sh            rules check, no rendering
 #   Scripts/test.sh shots      render each preview and save pictures to Saved/Shots/
@@ -23,7 +24,14 @@ for VARIANT in clinic office mine; do
     "$UE_EDITOR" "$PROJECT" -game -HGBot -Variant="$VARIANT" -nullrhi -nosound -unattended -nosplash \
       -abslog="$LOG" >/dev/null 2>&1
     RESULT="$(grep -o "HGTEST RESULT .*" "$LOG" || true)"
-    echo "$VARIANT: ${RESULT:-no result, see $LOG}"
+    echo "$VARIANT round: ${RESULT:-no result, see $LOG}"
+    case "$RESULT" in *PASS*) ;; *) FAILED=1 ;; esac
+
+    LOG="$PROJECT_DIR/Saved/Logs/catch-$VARIANT.log"
+    "$UE_EDITOR" "$PROJECT" -game -HGBot -HGCatch -Variant="$VARIANT" -nullrhi -nosound -unattended -nosplash \
+      -abslog="$LOG" >/dev/null 2>&1
+    RESULT="$(grep -o "HGTEST RESULT .*" "$LOG" || true)"
+    echo "$VARIANT catch: ${RESULT:-no result, see $LOG}"
     case "$RESULT" in *PASS*) ;; *) FAILED=1 ;; esac
   fi
 done

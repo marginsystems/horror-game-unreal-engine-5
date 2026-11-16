@@ -197,16 +197,16 @@ void AHGMonster::Stun(float Seconds)
 	Shout(Kind == EHGMonster::Mouth ? TEXT("bonk") : TEXT("?!"), FMath::Min(Seconds, 2.5f), FColor::White);
 }
 
-void AHGMonster::HearNoise(const FVector& Location, float HoldSeconds, bool bFootstep)
+bool AHGMonster::HearNoise(const FVector& Location, float HoldSeconds, bool bFootstep)
 {
 	if (StunLeft > 0.f || State == EState::Charge || State == EState::WindUp)
 	{
-		return;
+		return false;
 	}
 	// Only the Librarian cares about footsteps. The others need something more interesting.
 	if (bFootstep && Kind != EHGMonster::Librarian)
 	{
-		return;
+		return false;
 	}
 
 	NoiseLocation = Location;
@@ -214,7 +214,7 @@ void AHGMonster::HearNoise(const FVector& Location, float HoldSeconds, bool bFoo
 	const bool bAlreadyOnIt = State == EState::Investigate;
 	if (!GoTo(Location))
 	{
-		return;
+		return false;
 	}
 	if (!bAlreadyOnIt)
 	{
@@ -228,6 +228,7 @@ void AHGMonster::HearNoise(const FVector& Location, float HoldSeconds, bool bFoo
 			Shout(TEXT("?"), 1.2f, FColor::White);
 		}
 	}
+	return true;
 }
 
 bool AHGMonster::GoTo(const FVector& Target)
