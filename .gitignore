@@ -1,0 +1,27 @@
+# Unreal Engine generated folders
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+.vs/
+.vscode/
+.idea/
+*.xcworkspace
+*.xcodeproj
+*.sln
+*.VC.db
+*.opensdf
+*.sdf
+*.suo
+.DS_Store
+
+# Marketplace content we are not allowed to redistribute.
+# Fab "Standard License" packs go here; see docs/ASSETS.md for the list
+# and how to download them into your own copy.
+Content/Fab/
+Content/Marketplace/
+
+# Local editor preferences
+Config/UserEngine.ini
+Config/UserGame.ini
