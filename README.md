@@ -41,6 +41,10 @@ You need Unreal Engine 5.8 (Epic Games Launcher), Xcode on macOS, and [Git LFS](
 On a fresh Xcode, Unreal also needs Apple's Metal compiler: `xcodebuild -downloadComponent MetalToolchain`.
 
 ```bash
+git lfs install
+```
+
+```bash
 git clone https://github.com/marginsystems/horror-game-unreal-engine-5.git
 ```
 

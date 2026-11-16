@@ -13,6 +13,14 @@ source "$(dirname "$0")/env.sh"
 VARIANT="${1:-clinic}"
 shift || true
 
+case "$VARIANT" in
+  clinic|office|mine) ;;
+  *)
+    echo "Unknown variant '$VARIANT'. Use: clinic, office or mine." >&2
+    exit 2
+    ;;
+esac
+
 if [ ! -f "$PROJECT_DIR/Binaries/Mac/UnrealEditor-HorrorGame.dylib" ]; then
   "$(dirname "$0")/build.sh"
 fi
