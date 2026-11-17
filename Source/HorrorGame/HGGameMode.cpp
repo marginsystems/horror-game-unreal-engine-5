@@ -784,6 +784,19 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		}
 		// The one behind also grows: too tall for the hall by the end of it.
 		Man->SetActorScale3D(FVector(1.f, 1.f, 1.f + 0.13f * Wrong));
+		if (!FollowLight)
+		{
+			FollowLight = NewObject<UPointLightComponent>(Man);
+			FollowLight->SetupAttachment(Man->GetRootComponent());
+			FollowLight->SetRelativeLocation(FVector(0, 62, 156));
+			FollowLight->SetIntensityUnits(ELightUnits::Unitless);
+			FollowLight->SetLightColor(FLinearColor(0.72f, 0.82f, 1.f));
+			FollowLight->SetAttenuationRadius(120.f);
+			FollowLight->SetCastShadows(false);
+			FollowLight->RegisterComponent();
+			Man->AddInstanceComponent(FollowLight);
+		}
+		FollowLight->SetIntensity(16.f * Wrong);
 
 		if (HandTimer > 6.2f && !bHushed)
 		{

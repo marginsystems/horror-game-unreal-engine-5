@@ -164,6 +164,10 @@ private:
 	/** A point given from where a person stands: so far ahead of them, to their left, and up. */
 	FVector PersonPoint(const AActor* Person, float Ahead, float Left, float Up) const;
 
+	/** A faint cold light on the face of the doctor who follows, so what his face becomes can be seen. */
+	UPROPERTY()
+	TObjectPtr<class UPointLightComponent> FollowLight;
+
 	int32 HandStep = 0;
 	float HandTimer = 0.f;
 	/** Where his eyes were when mom reached him, and where she stops to pick him up. */

@@ -912,6 +912,8 @@ void AHGLevel::BuildWard()
 		Drab(FVector(HallNear + 1.f, (DoorLow + DoorHigh) * 0.5f, (H + DoorTop) * 0.5f), FVector(2, DoorHigh - DoorLow, H - DoorTop), Cold, false);
 		Lamp(this, Root, FVector(HallNear + 150, 150, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 3200.f, 620.f, true);
 		Lamp(this, Root, FVector(HallNear + 150, 150 + 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 4500.f, 700.f, false);
+		// A weak one between, so whoever walks behind him down the hall is never quite lost in the dark.
+		Lamp(this, Root, FVector(HallNear + 150, 150 + 450, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 1300.f, 520.f, false);
 		Lamp(this, Root, FVector(HallNear + 150, 150 - 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 1600.f, 620.f, false);
 	}
 
