@@ -3,7 +3,8 @@
 # The results are committed, so you only need this after changing one of those scripts.
 #
 #   Scripts/make-assets.sh             everything
-#   Scripts/make-assets.sh materials   Content/Materials  (make_materials.py)
+#   Scripts/make-assets.sh textures    Content/Textures   (fetch_textures.py, import_textures.py)
+#   Scripts/make-assets.sh materials   Content/Materials  (make_materials.py; needs the textures)
 #   Scripts/make-assets.sh sounds      Content/Audio      (make_sounds.py, import_sounds.py)
 #   Scripts/make-assets.sh models      Content/Models     (make_models.py in Blender, import_models.py)
 #
@@ -32,7 +33,14 @@ run_editor_script() {
   fi
 }
 
-case "$WHAT" in all|materials|sounds|models) ;; *) echo "unknown target: $WHAT"; exit 1 ;; esac
+case "$WHAT" in all|textures|materials|sounds|models) ;; *) echo "unknown target: $WHAT"; exit 1 ;; esac
+
+if [ "$WHAT" = all ] || [ "$WHAT" = textures ]; then
+  TEXTURES="$GENERATED/Textures-$STAMP"
+  mkdir -p "$TEXTURES"
+  python3 "$PROJECT_DIR/Scripts/fetch_textures.py" "$TEXTURES" >/dev/null
+  run_editor_script import_textures "$TEXTURES"
+fi
 
 if [ "$WHAT" = all ] || [ "$WHAT" = materials ]; then
   run_editor_script make_materials
