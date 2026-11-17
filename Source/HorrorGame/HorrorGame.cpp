@@ -101,7 +101,7 @@ namespace HG
 		case EHGVariant::Office: return TEXT("THE OFFICE  -  she can hear you");
 		case EHGVariant::Mine: return TEXT("THE MINE  -  it cannot turn corners");
 		case EHGVariant::Hospital: return TEXT("THE HOSPITAL  -  do not look away");
-		case EHGVariant::Ward: return TEXT("RUSSIA, 1997");
+		case EHGVariant::Ward: return TEXT("1997");
 		default: return TEXT("THE NIGHT CLINIC  -  do not look away");
 		}
 	}

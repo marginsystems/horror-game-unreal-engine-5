@@ -6,7 +6,7 @@ so is everything after the operation: the escape through the hospital.
 
 ## What happens
 
-A children's hospital in Russia, around 1997. A boy of about five is in a ward room with his
+A children's hospital, 1997. The game does not say where. A boy of about five is in a ward room with his
 mother, playing on the floor, in a good mood. Doctors come in. His mother understands he needs
 an operation and hands him over. He cries and asks for her. He is carried down a long hallway
 to a room where it is done with no general anaesthetic: a doctor holds him on her lap in a
