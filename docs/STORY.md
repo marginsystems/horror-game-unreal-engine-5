@@ -62,7 +62,7 @@ can only look.
 | --- | --- | --- | --- |
 | 1 | The ward | Sits on the floor with toys at a small child's eye height. Mom is in the room. Learns to look, move and pick things up through play: a shape sorter (circle, triangle, square) and one more small task. | Bright, warm, high contrast, colourful like a child's room. |
 | 2 | The handover | Doctors come to the door. Mom lifts him, gives a small sad smile and hands him over. He is carried out looking back at her over the doctor's shoulder. He cries for her. Looking only. | The colour drains with every step away from her. |
-| 3 | The corridor | Carried out of the room and to the right down a long hallway. The operation room is a door on the left. Looking only. | Long, echoing, too big. |
+| 3 | The corridor | Carried on down a hallway that is too long. The ceiling climbs, the doors grow and their handles rise out of reach. The lamps go out behind him one by one. The people standing in the hall have the doctors' faces, and fall in behind once he has passed. The doctor who was following goes ahead and holds open a door on the left: a white room and a chair. Looking only. | Long, echoing, too big. |
 | 4 | The chair | Held on a doctor's lap. Cloth goes over the eyes: the screen is fabric with light behind it, voices are muffled, red soaks slowly into the white. Nothing is shown directly. | The worst moment, and the quietest. |
 | 5 | The escape | He gets away. Small and fast. Runs and crawls through the hospital looking for mom while the doctors look for him. | The same building, now wrong: longer, darker, lights failing. |
 | 6 | Mom | He finds her. The colour comes back. It ends. | Relief. |
@@ -128,7 +128,7 @@ to the second.
 ## Build order
 
 1. The ward room and the shape sorter, at child height. (Built.)
-2. The handover and the start of the carried walk. (Built.) Then the rest of the corridor.
+2. The handover and the corridor, one unbroken carried walk. (Built.)
 3. The chair, done with cloth, sound and colour only.
 4. The escape in the hospital map: crawling, hiding, doctors that search.
 5. Mom, the ending, and the closing text.

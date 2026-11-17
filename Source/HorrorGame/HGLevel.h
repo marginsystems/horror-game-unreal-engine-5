@@ -26,6 +26,15 @@ public:
 	void BuildWard();
 	/** Swings the ward's door: 0 shut, 1 wide open onto the hall. */
 	void SetDoorOpen(float Alpha);
+
+	/** Scene three. The operation room's door, a long way down the hall on the left; 1 is wide open, and the light inside comes with it. */
+	void SetOpDoorOpen(float Alpha);
+	/** The middle of that doorway, on the floor. */
+	FVector OpDoorSpot() const { return OpDoorAt; }
+	/** How far along the hall each of its ceiling lamps hangs, nearest the ward first. */
+	const TArray<float>& HallLampAlong() const { return HallLampY; }
+	/** Dims one of the hall's lamps: 1 is as built, 0 is out. */
+	void SetHallLamp(int32 Index, float Level);
 	/** Shows a time on the ward's wall clock. */
 	void SetClock(float Hours);
 	FVector ClockSpot() const { return FVector(256, -40, 232); }
@@ -105,6 +114,19 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> WardDoor;
+
+	UPROPERTY()
+	TObjectPtr<USceneComponent> OpDoor;
+
+	UPROPERTY()
+	TObjectPtr<UPointLightComponent> OpLight;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UPointLightComponent>> HallLamps;
+
+	TArray<float> HallLampY;
+	TArray<float> HallLampFull;
+	FVector OpDoorAt = FVector::ZeroVector;
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> HourHand;

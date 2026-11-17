@@ -893,10 +893,8 @@ void AHGLevel::BuildWard()
 			// The far wall, in panels so the brick is not stretched.
 			Drab(FVector(HallFar + T * 0.5f, 150.f - HallLen * 0.5f + 216.f + 433.f * i, H * 0.5f), FVector(T, 433, H), Cold, false);
 		}
-		for (const float End : { -1.f, 1.f })
-		{
-			Drab(FVector((HallNear + HallFar) * 0.5f, 150.f + End * (HallLen * 0.5f + T * 0.5f), H * 0.5f), FVector(HallFar - HallNear, T, H), Cold, false);
-		}
+		// Closed at the far left end. To the right it runs on into the corridor of scene three.
+		Drab(FVector((HallNear + HallFar) * 0.5f, 150.f - HallLen * 0.5f - T * 0.5f, H * 0.5f), FVector(HallFar - HallNear, T, H), Cold, false);
 		// The near wall. Past the ends of the ward it is the hall's own; along the ward it is a skin over
 		// the back of the ward's wall, so no yellow shows out here. The doorway is left open.
 		for (int32 i = 0; i < 3; ++i)
@@ -910,10 +908,92 @@ void AHGLevel::BuildWard()
 		Drab(FVector(HallNear + 1.f, (-Y - T + DoorLow) * 0.5f, H * 0.5f), FVector(2, DoorLow + Y + T, H), Cold, false);
 		Drab(FVector(HallNear + 1.f, (Y + T + DoorHigh) * 0.5f, H * 0.5f), FVector(2, Y + T - DoorHigh, H), Cold, false);
 		Drab(FVector(HallNear + 1.f, (DoorLow + DoorHigh) * 0.5f, (H + DoorTop) * 0.5f), FVector(2, DoorHigh - DoorLow, H - DoorTop), Cold, false);
-		Lamp(this, Root, FVector(HallNear + 150, 150, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 3200.f, 620.f, true);
-		Lamp(this, Root, FVector(HallNear + 150, 150 + 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 4500.f, 700.f, false);
+		// The lamps to the right of the door are kept in order, because in scene three they go out behind him one by one.
+		auto HallLamp = [this, HallNear](float Along, float Ceiling, float Intensity, float Radius, bool bShadows)
+		{
+			HallLamps.Add(Lamp(this, Root, FVector(HallNear + 150, Along, Ceiling - 30), FLinearColor(0.55f, 0.72f, 1.f), Intensity, Radius, bShadows));
+			HallLampY.Add(Along);
+			HallLampFull.Add(Intensity);
+		};
+		HallLamp(150, H, 3200.f, 620.f, true);
 		// A weak one between, so whoever walks behind him down the hall is never quite lost in the dark.
-		Lamp(this, Root, FVector(HallNear + 150, 150 + 450, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 1300.f, 520.f, false);
+		HallLamp(150 + 450, H, 1300.f, 520.f, false);
+		HallLamp(150 + 900, H, 4500.f, 700.f, false);
+
+		// Scene three, the corridor: the same hall going on far too long. It is built in stretches, and
+		// each one is a little taller than the last, with a beam across the joint to hide the step, so
+		// that by the end the ceiling is out of sight and the doors are for giants. The handles climb
+		// out of a child's reach. The last stretch has the operation room's door in its left wall.
+		const float From = 150.f + HallLen * 0.5f, Stretch = 420.f;
+		const int32 Stretches = 10;
+		const FLinearColor DoorPaint(0.62f, 0.66f, 0.62f);
+		for (int32 i = 0; i < Stretches; ++i)
+		{
+			const float Mid = From + Stretch * (i + 0.5f);
+			const float High = H + 26.f * i;
+			const bool bLast = i == Stretches - 1;
+			Drab(FVector((HallNear + HallFar) * 0.5f, Mid, -10), FVector(HallFar - HallNear, Stretch, 20), FLinearColor(0.16f, 0.18f, 0.2f), true);
+			Drab(FVector((HallNear + HallFar) * 0.5f, Mid, High + 10), FVector(HallFar - HallNear, Stretch, 20), FLinearColor(0.2f, 0.22f, 0.24f), true);
+			Drab(FVector(HallNear - T * 0.5f, Mid, High * 0.5f), FVector(T, Stretch, High), Cold, false);
+			// The beam over the joint with the stretch before.
+			Drab(FVector((HallNear + HallFar) * 0.5f, From + Stretch * i, High - 6.f), FVector(HallFar - HallNear, 26, 64), FLinearColor(0.12f, 0.13f, 0.14f), false);
+			// The higher the ceiling, the stronger the lamp and the further it has to reach to find the floor.
+			HallLamp(Mid, High, (bLast ? 2600.f : 2100.f) * FMath::Pow(High / H, 1.5f), High + 320.f, false);
+
+			const float Grow = 1.f + 0.07f * i;
+			const float DoorWide = 92.f, DoorTall = 208.f * Grow;
+			if (bLast)
+			{
+				// The left wall in three pieces round the operation room's doorway.
+				const float Low = Mid - DoorWide * 0.5f, Top = Mid + DoorWide * 0.5f;
+				Drab(FVector(HallFar + T * 0.5f, (Mid - Stretch * 0.5f + Low) * 0.5f, High * 0.5f), FVector(T, Low - (Mid - Stretch * 0.5f), High), Cold, false);
+				Drab(FVector(HallFar + T * 0.5f, (Mid + Stretch * 0.5f + Top) * 0.5f, High * 0.5f), FVector(T, (Mid + Stretch * 0.5f) - Top, High), Cold, false);
+				Drab(FVector(HallFar + T * 0.5f, Mid, (High + DoorTall) * 0.5f), FVector(T, DoorWide, High - DoorTall), Cold, false);
+				OpDoorAt = FVector(HallFar + T * 0.5f, Mid, 0.f);
+				// Hinged like the ward's door, on its low-y edge, and it opens away from him, into the room.
+				OpDoor = HG::AddPivot(this, Root, FVector(HallFar + 4.f, Low, 0));
+				Painted(this, OpDoor, TEXT("Cube"), FVector(0, DoorWide * 0.5f, DoorTall * 0.5f), FVector(0.06f, DoorWide / 100.f, DoorTall / 100.f), FLinearColor(0.85f, 0.84f, 0.80f), true);
+				Painted(this, OpDoor, TEXT("Sphere"), FVector(-9, DoorWide - 12.f, 100.f * Grow), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
+
+				// The room behind it: white, too bright, and one chair.
+				const float RoomNear = HallFar + T, RoomFar = HallFar + T + 420.f, RoomHalf = 230.f, RoomHigh = 330.f;
+				const FLinearColor Tiled(0.92f, 0.93f, 0.95f);
+				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, -10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tiled, true);
+				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, RoomHigh + 10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tiled, true);
+				Painted(this, Root, TEXT("Cube"), FVector(RoomFar + T * 0.5f, Mid, RoomHigh * 0.5f), FVector(T / 100.f, RoomHalf * 0.02f, RoomHigh / 100.f), Tiled, true);
+				for (const float Side : { -1.f, 1.f })
+				{
+					Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid + Side * (RoomHalf + T * 0.5f), RoomHigh * 0.5f), FVector((RoomFar - RoomNear) / 100.f, T / 100.f, RoomHigh / 100.f), Tiled, true);
+				}
+				OpLight = Lamp(this, Root, FVector(RoomNear + 200, Mid, RoomHigh - 40), FLinearColor(0.92f, 0.97f, 1.f), 0.f, 900.f, false);
+				// The chair, facing the door, and a small table with a tray beside it.
+				const FLinearColor Seat(0.42f, 0.16f, 0.05f), Steel(0.5f, 0.52f, 0.55f);
+				const FVector Chair(RoomNear + 250, Mid, 0);
+				Painted(this, Root, TEXT("Cube"), Chair + FVector(0, 0, 47), FVector(0.5f, 0.5f, 0.07f), Seat);
+				Painted(this, Root, TEXT("Cube"), Chair + FVector(27, 0, 92), FVector(0.07f, 0.5f, 0.86f), Seat);
+				for (const FVector& Leg : { FVector(-21, -21, 22), FVector(-21, 21, 22), FVector(21, -21, 22), FVector(21, 21, 22) })
+				{
+					Painted(this, Root, TEXT("Cube"), Chair + Leg, FVector(0.05f, 0.05f, 0.44f), Steel);
+				}
+				Painted(this, Root, TEXT("Cube"), Chair + FVector(10, 95, 70), FVector(0.4f, 0.55f, 0.03f), Steel);
+				Painted(this, Root, TEXT("Cube"), Chair + FVector(10, 95, 35), FVector(0.05f, 0.05f, 0.7f), Steel);
+				Painted(this, Root, TEXT("Cube"), Chair + FVector(10, 95, 73.5f), FVector(0.26f, 0.36f, 0.02f), FLinearColor(0.9f, 0.9f, 0.88f));
+			}
+			else
+			{
+				Drab(FVector(HallFar + T * 0.5f, Mid, High * 0.5f), FVector(T, Stretch, High), Cold, false);
+				// A shut door, on the left in one stretch and on the right in the next.
+				const bool bLeft = i % 2 == 0;
+				const float Face = bLeft ? HallFar - 2.f : HallNear + 2.f;
+				const float Out = bLeft ? -1.f : 1.f;
+				const float DoorMid = Mid + (bLeft ? 60.f : -70.f);
+				Painted(this, Root, TEXT("Cube"), FVector(Face, DoorMid, DoorTall * 0.5f), FVector(0.05f, DoorWide * Grow / 100.f, DoorTall / 100.f), DoorPaint);
+				Painted(this, Root, TEXT("Cube"), FVector(Face + Out * 1.5f, DoorMid, DoorTall + 5.f), FVector(0.06f, (DoorWide * Grow + 16.f) / 100.f, 0.1f), FLinearColor(0.3f, 0.32f, 0.3f));
+				Painted(this, Root, TEXT("Sphere"), FVector(Face + Out * 6.f, DoorMid + DoorWide * Grow * 0.36f, 100.f * (1.f + 0.11f * i)), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
+			}
+		}
+		const float CorridorEnd = From + Stretch * Stretches;
+		Drab(FVector((HallNear + HallFar) * 0.5f, CorridorEnd + T * 0.5f, 300.f), FVector(HallFar - HallNear, T, 600), Cold, false);
 		Lamp(this, Root, FVector(HallNear + 150, 150 - 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 1600.f, 620.f, false);
 	}
 
@@ -1039,6 +1119,28 @@ void AHGLevel::BuildWard()
 	Lamp(this, Root, FVector(-X + 40, 0, 190), FLinearColor(0.7f, 0.85f, 1.f), 3500.f, 900.f, false);
 	Lamp(this, Root, FVector(40, 0, H - 30), FLinearColor(1.f, 0.95f, 0.85f), 4500.f, 1000.f, true);
 	Painted(this, Root, TEXT("Sphere"), FVector(40, 0, H - 14), FVector(0.4f, 0.4f, 0.2f), FLinearColor(1.f, 0.97f, 0.9f), false, 6.f);
+}
+
+void AHGLevel::SetOpDoorOpen(float Alpha)
+{
+	Alpha = FMath::Clamp(Alpha, 0.f, 1.f);
+	if (OpDoor)
+	{
+		OpDoor->SetRelativeRotation(FRotator(0.f, -105.f * Alpha, 0.f));
+	}
+	if (OpLight)
+	{
+		// The light is let out with the door; shut, the room does not exist yet.
+		OpLight->SetIntensity(9000.f * Alpha);
+	}
+}
+
+void AHGLevel::SetHallLamp(int32 Index, float Level)
+{
+	if (HallLamps.IsValidIndex(Index) && HallLamps[Index])
+	{
+		HallLamps[Index]->SetIntensity(HallLampFull[Index] * FMath::Clamp(Level, 0.f, 1.f));
+	}
 }
 
 void AHGLevel::SetDoorOpen(float Alpha)
