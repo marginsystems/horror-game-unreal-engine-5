@@ -33,6 +33,10 @@ PIVOTS = {
     "Toy_Circle": (0.0, 0.0, 0.0),
     "Toy_Square": (0.0, 0.0, 0.0),
     "Toy_Triangle": (0.0, 0.0, 0.0),
+    "Deco_Rainbow": (0.0, 0.0, 0.0),
+    "Deco_Star": (0.0, 0.0, 0.0),
+    "Clock_Face": (0.0, 0.0, 0.0),
+    "Clock_Hand": (0.0, 0.0, 0.0),
 }
 
 
@@ -493,6 +497,52 @@ def build_toys():
 
 
 # ------------------------------------------------------------------------------------------
+# Things on the ward's walls. Each is modelled lying flat in the XY plane with +Y as its "up";
+# the game stands it against a wall. The side facing the room is -Z.
+
+def build_wall_things():
+    # A rainbow: five flat arcs.
+    arcs = []
+    for i, colour in enumerate(("D8262A", "F08A1C", "F2D21E", "2FA84A", "2A6FD0")):
+        arcs.append(ring((0.0, 0.0, 0.0), 0.56 - 0.07 * i, 0.034, material(colour), scale=(1.0, 1.0, 0.25),
+                         arc=(0.0, math.pi), major_segments=48, minor_segments=8))
+    finish("Deco_Rainbow", arcs)
+
+    # A five-pointed star.
+    bm = bmesh.new()
+    rim = []
+    for i in range(10):
+        radius = 0.11 if i % 2 == 0 else 0.046
+        angle = math.pi / 2.0 + math.tau * i / 10.0
+        rim.append((radius * math.cos(angle), radius * math.sin(angle)))
+    front = [bm.verts.new((x, y, -0.008)) for x, y in rim]
+    back = [bm.verts.new((x, y, 0.008)) for x, y in rim]
+    bm.faces.new(front)
+    bm.faces.new(list(reversed(back)))
+    for i in range(10):
+        j = (i + 1) % 10
+        bm.faces.new((front[j], front[i], back[i], back[j]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    finish("Deco_Star", [to_object(bm, material("F7D11E", 1))])
+
+    # The wall clock: a white face in a dark rim, twelve marks. The hands are a separate part.
+    face = [
+        prism((0.0, 0.0, 0.0), 0.17, 0.03, material("20242A"), 40),
+        prism((0.0, 0.0, -0.012), 0.152, 0.012, material("F4F1E6"), 40),
+        prism((0.0, 0.0, -0.022), 0.012, 0.012, material("20242A"), 12),
+    ]
+    for hour in range(12):
+        angle = math.tau * hour / 12.0
+        long = hour % 3 == 0
+        length = 0.034 if long else 0.02
+        centre = (math.sin(angle) * (0.14 - length * 0.5), math.cos(angle) * (0.14 - length * 0.5), -0.019)
+        face.append(box(centre, (0.012 if long else 0.007, length, 0.003), material("20242A"), (0.0, 0.0, -angle)))
+    finish("Clock_Face", face)
+    # A hand points along +Y from the middle. The game scales one down for the hours.
+    finish("Clock_Hand", [box((0.0, 0.055, -0.024), (0.011, 0.13, 0.004), material("15171A"))])
+
+
+# ------------------------------------------------------------------------------------------
 # Export, and an optional picture of all three standing in a row.
 
 def export(folder):
@@ -598,6 +648,7 @@ def main():
     build_librarian()
     build_mouth()
     build_toys()
+    build_wall_things()
     export(folder)
     if len(arguments) > 1:
         preview(arguments[1])

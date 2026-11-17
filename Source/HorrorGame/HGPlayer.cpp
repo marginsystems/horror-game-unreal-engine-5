@@ -21,7 +21,6 @@ namespace
 	const float WalkSpeed = 330.f;
 	const float SprintSpeed = 560.f;
 	const float TiptoeSpeed = 160.f;
-	const float LookDegreesPerCount = 0.15f;
 	const float FlashlightIntensity = 16000.f;
 	const FVector HandRest(46.f, 19.f, -19.f);
 
@@ -131,6 +130,11 @@ void AHGPlayer::BeginPlay()
 		PC->SetInputMode(FInputModeGameOnly());
 		PC->bShowMouseCursor = false;
 	}
+}
+
+const FPostProcessSettings& AHGPlayer::Look() const
+{
+	return Camera->PostProcessSettings;
 }
 
 FVector AHGPlayer::EyeLocation() const
@@ -423,6 +427,12 @@ void AHGPlayer::HandleKeys(APlayerController* PC, AHGGameMode* Game)
 	if (PC->WasInputKeyJustPressed(EKeys::F3)) { Game->Travel(EHGVariant::Mine); return; }
 	if (PC->WasInputKeyJustPressed(EKeys::F4)) { Game->Travel(EHGVariant::Hospital); return; }
 	if (PC->WasInputKeyJustPressed(EKeys::F5)) { Game->Travel(EHGVariant::Ward); return; }
+	// Mouse too slow or too fast: minus and equals change it by a tenth.
+	if (PC->WasInputKeyJustPressed(EKeys::Equals) || PC->WasInputKeyJustPressed(EKeys::Hyphen))
+	{
+		LookSpeed = FMath::Clamp(LookSpeed * (PC->WasInputKeyJustPressed(EKeys::Equals) ? 1.1f : 0.9f), 0.05f, 1.f);
+		Game->Say(FString::Printf(TEXT("Mouse speed %d%%"), FMath::RoundToInt32(LookSpeed / 0.24f * 100.f)), 1.5f);
+	}
 	if (PC->WasInputKeyJustPressed(EKeys::R) && Game->IsOver())
 	{
 		Game->Travel(Game->GetVariant());
@@ -536,7 +546,7 @@ void AHGPlayer::Tick(float DeltaSeconds)
 		PC->SetControlRotation(Control);
 		return;
 	}
-	if (Game->IsOver() || Game->IsLoading())
+	if (Game->IsOver() || Game->IsLoading() || Game->IsCutscene())
 	{
 		return;
 	}
@@ -546,8 +556,8 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	float MouseY = 0.f;
 	PC->GetInputMouseDelta(MouseX, MouseY);
 	FRotator Control = PC->GetControlRotation();
-	Control.Yaw += MouseX * LookDegreesPerCount;
-	Control.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Control.Pitch) + MouseY * LookDegreesPerCount, -82.f, 82.f);
+	Control.Yaw += MouseX * LookSpeed;
+	Control.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Control.Pitch) + MouseY * LookSpeed, -82.f, 82.f);
 	Control.Roll = 0.f;
 	PC->SetControlRotation(Control);
 

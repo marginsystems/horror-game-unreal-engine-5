@@ -72,6 +72,8 @@ namespace HG
 	void PlayAt(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume = 1.f, float Pitch = 1.f);
 	/** Plays in the player's own head: their hands, their feet, the end of the round. */
 	void Play(const UObject* Context, const TCHAR* Name, float Volume = 1.f, float Pitch = 1.f);
+	/** A spoken line from the private assets plugin (/HorrorPrivate/Audio/V_<name>), heard from where the speaker is. Silent without the plugin. */
+	void Voice(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume = 1.f);
 	/** Starts a looping sound that follows Parent around. */
 	UAudioComponent* LoopOn(USceneComponent* Parent, const TCHAR* Name, float Volume = 1.f);
 

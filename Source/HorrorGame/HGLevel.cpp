@@ -836,6 +836,7 @@ void AHGLevel::BuildWard()
 	Variant = EHGVariant::Ward;
 	// The room is 5.2 m by 6.4 m and 3 m high, centred on the origin. The window is in the -X wall, the door in the +X wall.
 	const float X = 260.f, Y = 320.f, H = 300.f, T = 20.f;
+	const float WinHalf = 90.f, WinLow = 100.f, WinHigh = 230.f;
 	const FLinearColor Sunny(0.95f, 0.62f, 0.08f);
 	const FLinearColor Sky(0.03f, 0.30f, 0.75f);
 	const FLinearColor White(0.85f, 0.84f, 0.80f);
@@ -860,13 +861,105 @@ void AHGLevel::BuildWard()
 	// +Y and -Y walls.
 	Wall(FVector(0, Y + T * 0.5f, H * 0.5f), FVector(2 * X + 2 * T, T, H), FVector(0, -1, 0));
 	Wall(FVector(0, -Y - T * 0.5f, H * 0.5f), FVector(2 * X + 2 * T, T, H), FVector(0, 1, 0));
-	// +X wall, with the door.
-	Wall(FVector(X + T * 0.5f, 0, H * 0.5f), FVector(T, 2 * Y, H), FVector(-1, 0, 0));
-	Painted(this, Root, TEXT("Cube"), FVector(X - 3.f, 150, 104), FVector(0.06f, 0.92f, 2.08f), White);
-	Painted(this, Root, TEXT("Cube"), FVector(X - 7.f, 150, 108), FVector(0.04f, 0.80f, 1.96f), FLinearColor(0.80f, 0.86f, 0.90f));
-	Painted(this, Root, TEXT("Sphere"), FVector(X - 12.f, 116, 100), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
+	// +X wall in three pieces round the doorway (0.92 m wide, 2.08 m high, from y = 104 to 196).
+	const float DoorLow = 104.f, DoorHigh = 196.f, DoorTop = 208.f;
+	Wall(FVector(X + T * 0.5f, (-Y + DoorLow) * 0.5f, H * 0.5f), FVector(T, DoorLow + Y, H), FVector(-1, 0, 0));
+	Wall(FVector(X + T * 0.5f, (Y + DoorHigh) * 0.5f, H * 0.5f), FVector(T, Y - DoorHigh, H), FVector(-1, 0, 0));
+	Painted(this, Root, TEXT("Cube"), FVector(X + T * 0.5f, (DoorLow + DoorHigh) * 0.5f, (H + DoorTop) * 0.5f), FVector(T, DoorHigh - DoorLow, H - DoorTop) / 100.f, Sunny, true);
+	// The door hangs on a hinge at its low-y edge and opens outwards, into the hall.
+	WardDoor = HG::AddPivot(this, Root, FVector(X + 4.f, DoorLow, 0));
+	Painted(this, WardDoor, TEXT("Cube"), FVector(0, 46, 104), FVector(0.06f, 0.92f, 2.08f), White, true);
+	Painted(this, WardDoor, TEXT("Cube"), FVector(-4, 46, 108), FVector(0.03f, 0.78f, 1.92f), FLinearColor(0.72f, 0.80f, 0.86f));
+	Painted(this, WardDoor, TEXT("Sphere"), FVector(-9, 80, 100), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
+
+	// The hall outside: the same building with the colour taken out. Brick and stained plaster, bare concrete,
+	// a cold light a long way down. It runs left and right of the door.
+	{
+		const float HallNear = X + T, HallFar = X + T + 300.f, HallLen = 2600.f;
+		auto Drab = [this](const FVector& At, const FVector& Size, const FLinearColor& Tint, bool bFloor)
+		{
+			UStaticMeshComponent* Comp = HG::AddShape(this, Root, TEXT("Cube"), At, Size / 100.f, Tint, 0.f, true);
+			if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Comp->GetMaterial(0)))
+			{
+				Material->SetScalarParameterValue(TEXT("Textured"), 1.f);
+				Material->SetScalarParameterValue(TEXT("Floor"), bFloor ? 1.f : 0.f);
+			}
+		};
+		const FLinearColor Cold(0.30f, 0.36f, 0.40f);
+		Drab(FVector((HallNear + HallFar) * 0.5f, 150, -10), FVector(HallFar - HallNear, HallLen, 20), FLinearColor(0.16f, 0.18f, 0.2f), true);
+		Drab(FVector((HallNear + HallFar) * 0.5f, 150, H + 10), FVector(HallFar - HallNear, HallLen, 20), FLinearColor(0.2f, 0.22f, 0.24f), true);
+		for (int32 i = 0; i < 6; ++i)
+		{
+			// The far wall, in panels so the brick is not stretched.
+			Drab(FVector(HallFar + T * 0.5f, 150.f - HallLen * 0.5f + 216.f + 433.f * i, H * 0.5f), FVector(T, 433, H), Cold, false);
+		}
+		for (const float End : { -1.f, 1.f })
+		{
+			Drab(FVector((HallNear + HallFar) * 0.5f, 150.f + End * (HallLen * 0.5f + T * 0.5f), H * 0.5f), FVector(HallFar - HallNear, T, H), Cold, false);
+		}
+		Lamp(this, Root, FVector(HallNear + 150, 150, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 3200.f, 620.f, true);
+		Lamp(this, Root, FVector(HallNear + 150, 150 + 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 4500.f, 700.f, false);
+		Lamp(this, Root, FVector(HallNear + 150, 150 - 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 1600.f, 620.f, false);
+	}
+
+	// Stands one of the flat wall models (see build_wall_things in make_models.py) against a wall.
+	auto OnWall = [this](const TCHAR* Model, const FVector& At, const FVector& Along, float Scale, float Tilt)
+	{
+		// The importer mirrors a model's Y, so its "up" is -Y here. Turning both axes round keeps the
+		// model upright with its front to the room.
+		const FRotator Stand = FRotationMatrix::MakeFromXY(-Along, -FVector::UpVector).Rotator();
+		if (UStaticMeshComponent* Comp = HG::AddModel(this, Root, Model, At, Stand, FVector(Scale)))
+		{
+			Comp->AddLocalRotation(FRotator(0.f, Tilt, 0.f));
+			for (int32 i = 0; i < Comp->GetNumMaterials(); ++i)
+			{
+				if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Comp->GetMaterial(i)))
+				{
+					Material->SetScalarParameterValue(TEXT("Clean"), 1.f);
+					Material->SetScalarParameterValue(TEXT("Local"), 0.f);
+				}
+			}
+		}
+	};
+	// The door wall: a rainbow, the clock, stars.
+	OnWall(TEXT("Deco_Rainbow"), FVector(X - 2.f, -190, 150), FVector(0, 1, 0), 1.25f, 0.f);
+	OnWall(TEXT("Clock_Face"), ClockSpot(), FVector(0, 1, 0), 1.f, 0.f);
+	MinuteHand = HG::AddPivot(this, Root, ClockSpot());
+	MinuteHand->SetWorldRotation(FRotationMatrix::MakeFromXY(FVector(0, -1, 0), -FVector::UpVector).Rotator());
+	HourHand = HG::AddPivot(this, Root, ClockSpot());
+	HourHand->SetWorldRotation(MinuteHand->GetComponentRotation());
+	HG::AddModel(this, MinuteHand, TEXT("Clock_Hand"));
+	HG::AddModel(this, HourHand, TEXT("Clock_Hand"), FVector::ZeroVector, FRotator::ZeroRotator, FVector(1.5f, 0.66f, 1.f));
+	for (const FVector& At : { FVector(X - 2.f, 60, 255), FVector(X - 2.f, 20, 205), FVector(X - 2.f, 250, 250), FVector(X - 2.f, 285, 190) })
+	{
+		OnWall(TEXT("Deco_Star"), At, FVector(0, 1, 0), 1.3f, FMath::FRandRange(-25.f, 25.f));
+	}
+	// The window wall: red curtains, and flowers painted along the rail.
+	for (const float Side : { -1.f, 1.f })
+	{
+		Painted(this, Root, TEXT("Cube"), FVector(-X + 8.f, Side * (WinHalf + 34.f), 168), FVector(0.05f, 0.62f, 1.6f), FLinearColor(0.75f, 0.08f, 0.1f));
+	}
+	Painted(this, Root, TEXT("Cube"), FVector(-X + 9.f, 0, 250), FVector(0.06f, 2.7f, 0.07f), FLinearColor(0.35f, 0.2f, 0.1f));
+	const FLinearColor Petals[] = { FLinearColor(0.9f, 0.1f, 0.12f), FLinearColor(1.f, 0.45f, 0.75f), FLinearColor(0.55f, 0.2f, 0.8f), FLinearColor(1.f, 1.f, 1.f) };
+	for (int32 i = 0; i < 9; ++i)
+	{
+		const float Along = -Y + 50.f + 67.f * i;
+		if (FMath::Abs(Along) < WinHalf + 70.f) { continue; }
+		const float Tall = 30.f + 14.f * (i % 3);
+		Painted(this, Root, TEXT("Cube"), FVector(-X + 1.5f, Along, 124.f + Tall * 0.5f), FVector(0.012f, 0.03f, Tall / 100.f), FLinearColor(0.12f, 0.55f, 0.15f));
+		Painted(this, Root, TEXT("Sphere"), FVector(-X + 2.f, Along, 126.f + Tall), FVector(0.03f, 0.2f, 0.2f), Petals[i % UE_ARRAY_COUNT(Petals)]);
+		Painted(this, Root, TEXT("Sphere"), FVector(-X + 2.5f, Along, 126.f + Tall), FVector(0.03f, 0.08f, 0.08f), FLinearColor(1.f, 0.8f, 0.1f));
+	}
+	// The sun wall and the balloon wall get a few stars each too.
+	for (const FVector& At : { FVector(60, Y - 2.f, 150), FVector(200, Y - 2.f, 165), FVector(-205, Y - 2.f, 145) })
+	{
+		OnWall(TEXT("Deco_Star"), At, FVector(-1, 0, 0), 1.2f, FMath::FRandRange(-25.f, 25.f));
+	}
+	for (const FVector& At : { FVector(215, -Y + 2.f, 150), FVector(-235, -Y + 2.f, 165) })
+	{
+		OnWall(TEXT("Deco_Star"), At, FVector(1, 0, 0), 1.2f, FMath::FRandRange(-25.f, 25.f));
+	}
 	// -X wall in four pieces around the window (1.8 m wide, from 1.0 m to 2.3 m up).
-	const float WinHalf = 90.f, WinLow = 100.f, WinHigh = 230.f;
 	Wall(FVector(-X - T * 0.5f, 0, WinLow * 0.5f), FVector(T, 2 * Y, WinLow), FVector(1, 0, 0));
 	Wall(FVector(-X - T * 0.5f, 0, (H + WinHigh) * 0.5f), FVector(T, 2 * Y, H - WinHigh), FVector(1, 0, 0));
 	Wall(FVector(-X - T * 0.5f, (Y + WinHalf) * 0.5f, (WinLow + WinHigh) * 0.5f), FVector(T, Y - WinHalf, WinHigh - WinLow), FVector(1, 0, 0));
@@ -932,3 +1025,25 @@ void AHGLevel::BuildWard()
 	Lamp(this, Root, FVector(40, 0, H - 30), FLinearColor(1.f, 0.95f, 0.85f), 4500.f, 1000.f, true);
 	Painted(this, Root, TEXT("Sphere"), FVector(40, 0, H - 14), FVector(0.4f, 0.4f, 0.2f), FLinearColor(1.f, 0.97f, 0.9f), false, 6.f);
 }
+
+void AHGLevel::SetDoorOpen(float Alpha)
+{
+	if (WardDoor)
+	{
+		// Swings outwards: the free edge moves towards +X.
+		WardDoor->SetRelativeRotation(FRotator(0.f, -100.f * FMath::Clamp(Alpha, 0.f, 1.f), 0.f));
+	}
+}
+
+void AHGLevel::SetClock(float Hours)
+{
+	// A hand points up its own +Y and the clock's face is turned to the room, so turning it the
+	// negative way round its Z reads as clockwise from inside.
+	if (MinuteHand && HourHand)
+	{
+		const float Minutes = FMath::Fmod(Hours, 1.f) * 60.f;
+		MinuteHand->SetRelativeRotation((FRotationMatrix::MakeFromXY(FVector(0, -1, 0), -FVector::UpVector).ToQuat() * FRotator(0.f, -6.f * Minutes, 0.f).Quaternion()).Rotator());
+		HourHand->SetRelativeRotation((FRotationMatrix::MakeFromXY(FVector(0, -1, 0), -FVector::UpVector).ToQuat() * FRotator(0.f, -30.f * FMath::Fmod(Hours, 12.f), 0.f).Quaternion()).Rotator());
+	}
+}
+

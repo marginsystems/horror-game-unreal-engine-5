@@ -7,6 +7,7 @@
 #include "HGGameMode.generated.h"
 
 class AHGLevel;
+class ACameraActor;
 class AHGMonster;
 class AHGPlayer;
 class AHGSorter;
@@ -45,6 +46,10 @@ public:
 	bool IsOver() const { return bOver; }
 	/** True while the engine is still preparing shaders, textures or meshes. The round waits for it. */
 	bool IsLoading() const { return LoadingLeft > 0; }
+	/** True while the opening shots play and the player has no control yet. */
+	bool IsCutscene() const { return CineLeft > 0.f; }
+	/** Seconds into the opening shots. */
+	float CineElapsed() const { return CineLength - CineLeft; }
 	int32 LoadingLeft = 0;
 	bool HasWon() const { return bWon; }
 	EHGVariant GetVariant() const { return Variant; }
@@ -66,6 +71,17 @@ private:
 	/** Scene one of the story: lays out the toys in the ward and walks the player through playing with them. */
 	void PopulateWard();
 	void TickWard(float Dt, AHGPlayer* Player);
+	void BeginCutscene(AHGPlayer* Player);
+	void TickCutscene(float Dt, AHGPlayer* Player);
+
+	/** The camera the opening shots are filmed with. */
+	UPROPERTY()
+	TObjectPtr<ACameraActor> Cine;
+
+	static constexpr float CineLength = 9.5f;
+	float CineLeft = 0.f;
+	float DoorOpen = 0.f;
+	float TickBank = 0.f;
 	void TickBot(float Dt, AHGPlayer* Player);
 	void TickCatchBot(float Dt, AHGPlayer* Player);
 	void TickShots(float Dt, AHGPlayer* Player);
@@ -87,6 +103,16 @@ private:
 	/** The toy mom asks for once the shapes are in. Null when the toy pack is not installed. */
 	UPROPERTY()
 	TObjectPtr<AHGToy> WardRabbit;
+
+	/** The sorter's three shapes, for the self-play check. */
+	UPROPERTY()
+	TArray<TObjectPtr<AHGToy>> WardShapes;
+
+	void TickWardBot(float Dt, AHGPlayer* Player);
+
+	/** Frames drawn and real seconds passed since loading finished, for the frame-rate line in the log. */
+	int32 FramesSeen = 0;
+	double SecondsSeen = 0.0;
 
 	int32 WardStep = 0;
 	float WardTimer = 0.f;

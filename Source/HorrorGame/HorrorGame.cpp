@@ -266,7 +266,7 @@ namespace HG
 			TEXT("pickup"), TEXT("fuse"), TEXT("power"), TEXT("caught"), TEXT("win"), TEXT("scream"), TEXT("heart"),
 			TEXT("blink"), TEXT("question"), TEXT("gary_step"), TEXT("gary_freeze"), TEXT("shush"), TEXT("heels"),
 			TEXT("squelch"), TEXT("mouth_loop"), TEXT("mouth_roar"), TEXT("bonk"),
-			TEXT("amb_clinic"), TEXT("amb_office"), TEXT("amb_mine"),
+			TEXT("amb_clinic"), TEXT("amb_office"), TEXT("amb_mine"), TEXT("tick"),
 		};
 		return Names;
 	}
@@ -293,6 +293,15 @@ namespace HG
 		}
 	}
 
+	void Voice(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume)
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/V_%s.V_%s"), Name, Name);
+		if (USoundBase* Found = LoadObject<USoundBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			UGameplayStatics::PlaySoundAtLocation(Context, Found, Location, Volume, 1.f, 0.f, Falloff());
+		}
+	}
+
 	UAudioComponent* LoopOn(USceneComponent* Parent, const TCHAR* Name, float Volume)
 	{
 		USoundBase* Found = Sound(Name);
@@ -311,6 +320,7 @@ namespace HG
 			TEXT("Librarian_Body"), TEXT("Librarian_Head"), TEXT("Librarian_Arm"), TEXT("Librarian_Shush"),
 			TEXT("Mouth_Top"), TEXT("Mouth_Bottom"),
 			TEXT("Toy_Sorter"), TEXT("Toy_Circle"), TEXT("Toy_Square"), TEXT("Toy_Triangle"),
+			TEXT("Deco_Rainbow"), TEXT("Deco_Star"), TEXT("Clock_Face"), TEXT("Clock_Hand"),
 		};
 		return Names;
 	}
