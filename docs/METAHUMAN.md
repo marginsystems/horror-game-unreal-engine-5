@@ -176,12 +176,12 @@ runs in the Python commandlet, so no editor opens.
 
    Each package lands in `/HorrorPrivate/MetaHumans/Wardrobe/<name>`; the log lines starting
    `HGASSET` name the wardrobe item (`WI_...`) of each outfit.
-3. Dress her and assemble. `Scripts/dress_mom.py` puts the items on the character, sets their
+3. Dress her and assemble. `Scripts/dress_people.py` puts the items on the character, sets their
    colours, and with `HG_BUILD=1` saves and assembles `BP_Mom`. Without `HG_BUILD` it only
    logs each item's adjustable parameters and changes nothing on disk.
 
    ```bash
-   bash -c 'source Scripts/env.sh; HG_BUILD=1 "$UE_ROOT/Engine/Binaries/Mac/UnrealEditor-Cmd" "$PROJECT" -run=pythonscript -script="$PROJECT_DIR/Scripts/dress_mom.py" -unattended -nosplash -AllowCommandletRendering -RenderOffScreen -abslog=<log>'
+   bash -c 'source Scripts/env.sh; HG_BUILD=1 "$UE_ROOT/Engine/Binaries/Mac/UnrealEditor-Cmd" "$PROJECT" -run=pythonscript -script="$PROJECT_DIR/Scripts/dress_people.py" -unattended -nosplash -AllowCommandletRendering -RenderOffScreen -abslog=<log>'
    ```
 
 What had to be found out:
@@ -204,6 +204,15 @@ What had to be found out:
   `get_item_keys_for_wardrobe_item`.
 - **In a commandlet the asset registry has not scanned the plugin.** `does_asset_exist` says
   no for an asset that is on disk; `load_asset` finds it.
+- **A new character's first assembly cannot run in the commandlet.** Assembly bakes the face
+  textures (`<Name>/Face/Baked/T_EyeIris...`) with TextureGraph, which is not started in a
+  commandlet: `Couldn't find baked texture ... This should have been produced by the texture
+  graph`, `Collection build failed`, and then the process dies on a Slate assertion. Mom could
+  be reassembled headless only because her baked face textures already existed from her first
+  assembly in the editor. The cloud rig and texture download do work headless (the sign-in took
+  two and a half minutes to come through, the rig 166 seconds). So for a new person: run
+  `dress_people.py` for the rig and the clothes, then assemble once in the editor through MCP
+  (`H.assemble`, see above); after that the commandlet can reassemble them.
 - **"Failed to generated pre-baked groom textures".** Logged on every commandlet assembly
   (`TextureGraph engine is not initialised`). It bakes brows into the far face textures; the
   assembly still succeeds and nothing visible in the ward is missing.

@@ -93,4 +93,4 @@ Add one line here for every CC-BY asset that is committed to the repository.
 - **MetaHuman clothes and hair from Fab** (the mother's sweater, jeans and flats by Epic Games,
   her hair by Venice; all free, Fab Standard License). Imported from `.mhpkg` files to
   `/HorrorPrivate/MetaHumans/Wardrobe` by `Scripts/import_metahuman_packages.py` and put on her
-  by `Scripts/dress_mom.py`. The listings are in the private plugin's `LICENSE-NOTES.md`.
+  by `Scripts/dress_people.py`. The listings are in the private plugin's `LICENSE-NOTES.md`.

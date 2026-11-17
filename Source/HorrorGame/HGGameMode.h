@@ -11,6 +11,8 @@ class ACameraActor;
 class AHGMonster;
 class AHGPlayer;
 class AHGSorter;
+class UAnimSequence;
+class UHGPersonAnim;
 class AHGToy;
 class USoundBase;
 class UStaticMesh;
@@ -118,10 +120,35 @@ private:
 	UPROPERTY()
 	TObjectPtr<AActor> WardMom;
 
+	/** What moves her body: one clip, and her head turned on top of it. */
+	UPROPERTY()
+	TObjectPtr<UHGPersonAnim> MomAnim;
+
+	/** The two doctors, waiting down the hall until the clock reaches ten. Empty without the private plugin. */
+	UPROPERTY()
+	TArray<TObjectPtr<AActor>> WardDoctors;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UHGPersonAnim>> DoctorAnims;
+
+	UPROPERTY()
+	TObjectPtr<UAnimSequence> PersonIdle;
+
+	UPROPERTY()
+	TObjectPtr<UAnimSequence> PersonWalk;
+
+	/** Spawns one of the MetaHuman people and hands back what animates the body. Null when the plugin lacks them. */
+	AActor* SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim);
+	void TickDoctors(float Dt, const AHGPlayer* Player);
+
 	void TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen);
 
 	/** The MetaHuman body faces along its own +Y, so "facing a point" needs a quarter turn taken off. */
 	float MomYawOffset = -90.f;
+	/** True while her body is turning to face him again; it starts late and stops close, so she does not twitch. */
+	bool bMomTurning = false;
+	float MomFillIntensity = 60.f;
+	float DoctorSpeed = 105.f;
 	float MomGlance = 0.f;
 	float MomNextGlance = 9.f;
 	int32 MomShot = 0;

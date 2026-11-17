@@ -7,6 +7,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -25,6 +26,7 @@
 #include "HGActors.h"
 #include "HGLevel.h"
 #include "HGMonster.h"
+#include "HGPersonAnim.h"
 #include "HGPlayer.h"
 #include "InputKeyEventArgs.h"
 #include "Kismet/GameplayStatics.h"
@@ -311,58 +313,113 @@ void AHGGameMode::PopulateWard()
 		}
 	}
 
-	// Mom, standing by the bed, watching him play. She is a MetaHuman kept in the private plugin
-	// (docs/METAHUMAN.md). Without the plugin her voice is still in the room, from where she would stand.
-	UClass* MomClass = LoadClass<AActor>(nullptr, TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), nullptr, LOAD_NoWarn | LOAD_Quiet);
-	if (!MomClass)
+	// The people are MetaHumans kept in the private plugin (docs/METAHUMAN.md). Their bodies take
+	// Epic's mannequin clips as they are; face, hair and clothes follow the body.
+	for (const TCHAR* ClipPath : {
+		TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"),
+		TEXT("/MetaHumanCharacter/Optional/Animation/UEFNAnimPreset/Locomotion/AS_MH_Neutral_Stand_Idle_Loop.AS_MH_Neutral_Stand_Idle_Loop") })
 	{
-		return;
+		PersonIdle = PersonIdle ? PersonIdle.Get() : LoadObject<UAnimSequence>(nullptr, ClipPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
 	}
-	const float Facing = (FVector(60, -70, 0) - MomSpot).Rotation().Yaw + MomYawOffset;
-	WardMom = World->SpawnActor<AActor>(MomClass, MomSpot, FRotator(0.f, Facing, 0.f), Always);
-	if (!WardMom)
+	for (const TCHAR* ClipPath : {
+		TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd.MF_Unarmed_Walk_Fwd"),
+		TEXT("/MetaHumanCharacter/Optional/Animation/UEFNAnimPreset/Locomotion/AS_MH_Neutral_Walk_Loop_F.AS_MH_Neutral_Walk_Loop_F") })
 	{
-		return;
+		PersonWalk = PersonWalk ? PersonWalk.Get() : LoadObject<UAnimSequence>(nullptr, ClipPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
 	}
-	// Her own collision is a ragdoll's worth of small bodies; one plain capsule is what he bumps into.
+
+	// Mom, standing by the bed, watching him play. Without the plugin her voice is still in the
+	// room, from where she would stand.
+	UHGPersonAnim* Anim = nullptr;
+	WardMom = SpawnPerson(TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, Anim);
+	MomAnim = Anim;
+	if (WardMom)
+	{
+		if (MomAnim)
+		{
+			MomAnim->SetClip(PersonIdle);
+			UE_LOG(LogHG, Log, TEXT("HGTEST MOM clip=%s"), PersonIdle ? *PersonIdle->GetName() : TEXT("none"));
+		}
+		// The window is behind her and her fringe shades her eyes, so her face sat in shadow and
+		// read as stern. A small warm lamp in front of it, casting no shadow, lets him see her.
+		UPointLightComponent* Fill = NewObject<UPointLightComponent>(WardMom);
+		Fill->SetupAttachment(WardMom->GetRootComponent());
+		Fill->SetRelativeLocation(FVector(0, 55, 150));
+		Fill->SetIntensityUnits(ELightUnits::Unitless);
+		Fill->SetIntensity(MomFillIntensity);
+		Fill->SetLightColor(FLinearColor(1.f, 0.86f, 0.72f));
+		Fill->SetAttenuationRadius(150.f);
+		Fill->SetCastShadows(false);
+		Fill->RegisterComponent();
+		WardMom->AddInstanceComponent(Fill);
+		TArray<UPrimitiveComponent*> Pieces;
+		WardMom->GetComponents(Pieces);
+		UE_LOG(LogHG, Log, TEXT("HGTEST MOM spawned parts=%d"), Pieces.Num());
+	}
+
+	// The two doctors wait a long way down the hall, behind the closed door, until ten.
+	static const TCHAR* DoctorClasses[] = {
+		TEXT("/HorrorPrivate/MetaHumans/DoctorWoman/BP_DoctorWoman.BP_DoctorWoman_C"),
+		TEXT("/HorrorPrivate/MetaHumans/DoctorMan/BP_DoctorMan.BP_DoctorMan_C") };
+	static const FVector DoctorStarts[] = { FVector(430, 790, 0), FVector(480, 880, 0) };
+	for (int32 i = 0; i < 2; ++i)
+	{
+		UHGPersonAnim* DoctorAnim = nullptr;
+		if (AActor* Doctor = SpawnPerson(DoctorClasses[i], DoctorStarts[i], -90.f, DoctorAnim))
+		{
+			if (DoctorAnim)
+			{
+				DoctorAnim->SetClip(PersonIdle);
+			}
+			WardDoctors.Add(Doctor);
+			DoctorAnims.Add(DoctorAnim);
+		}
+	}
+	UE_LOG(LogHG, Log, TEXT("HGTEST DOCTORS spawned=%d"), WardDoctors.Num());
+}
+
+AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim)
+{
+	OutAnim = nullptr;
+	UClass* Class = LoadClass<AActor>(nullptr, ClassPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!Class)
+	{
+		return nullptr;
+	}
+	FActorSpawnParameters Always;
+	Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AActor* Person = GetWorld()->SpawnActor<AActor>(Class, At, FRotator(0.f, FacingYaw + MomYawOffset, 0.f), Always);
+	if (!Person)
+	{
+		return nullptr;
+	}
+	// Their own collision is a ragdoll's worth of small bodies; one plain capsule is what he bumps into.
 	TArray<UPrimitiveComponent*> Pieces;
-	WardMom->GetComponents(Pieces);
+	Person->GetComponents(Pieces);
 	for (UPrimitiveComponent* Piece : Pieces)
 	{
 		Piece->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
-	UCapsuleComponent* Block = NewObject<UCapsuleComponent>(WardMom);
+	UCapsuleComponent* Block = NewObject<UCapsuleComponent>(Person);
 	Block->InitCapsuleSize(24.f, 84.f);
-	Block->SetupAttachment(WardMom->GetRootComponent());
+	Block->SetupAttachment(Person->GetRootComponent());
 	Block->SetRelativeLocation(FVector(0, 0, 84));
 	Block->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Block->SetCollisionResponseToAllChannels(ECR_Block);
 	Block->RegisterComponent();
-	WardMom->AddInstanceComponent(Block);
+	Person->AddInstanceComponent(Block);
 
-	// The body takes Epic's mannequin clips as they are; the face, hair and clothes follow the body.
 	TArray<USkeletalMeshComponent*> Meshes;
-	WardMom->GetComponents(Meshes);
+	Person->GetComponents(Meshes);
 	for (USkeletalMeshComponent* Mesh : Meshes)
 	{
-		if (Mesh->GetName() != TEXT("Body"))
+		if (Mesh->GetName() == TEXT("Body"))
 		{
-			continue;
-		}
-		for (const TCHAR* ClipPath : {
-			TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"),
-			TEXT("/MetaHumanCharacter/Optional/Animation/UEFNAnimPreset/Locomotion/AS_MH_Neutral_Stand_Idle_Loop.AS_MH_Neutral_Stand_Idle_Loop") })
-		{
-			if (UAnimSequence* Clip = LoadObject<UAnimSequence>(nullptr, ClipPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
-			{
-				Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-				Mesh->PlayAnimation(Clip, true);
-				UE_LOG(LogHG, Log, TEXT("HGTEST MOM clip=%s"), *Clip->GetName());
-				break;
-			}
+			Mesh->SetAnimInstanceClass(UHGPersonAnim::StaticClass());
+			OutAnim = Cast<UHGPersonAnim>(Mesh->GetAnimInstance());
 		}
 	}
-	UE_LOG(LogHG, Log, TEXT("HGTEST MOM spawned parts=%d"), Pieces.Num());
+	return Person;
 }
 
 void AHGGameMode::TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen)
@@ -379,10 +436,70 @@ void AHGGameMode::TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen)
 		MomNextGlance = SecondsToTen < 60.f ? FMath::FRandRange(5.f, 8.f) : FMath::FRandRange(12.f, 18.f);
 	}
 	MomGlance = FMath::Max(0.f, MomGlance - Dt);
-	const FVector Door(280, 150, 0);
-	const FVector Target = (MomGlance > 0.f || WardStep == 10) ? Door : (Player ? Player->GetActorLocation() : FVector(60, -70, 0));
-	const FRotator Want(0.f, (Target - MomSpot).Rotation().Yaw + MomYawOffset, 0.f);
-	WardMom->SetActorRotation(FMath::RInterpTo(WardMom->GetActorRotation(), Want, Dt, 2.2f));
+	const FVector Door(280, 150, 150);
+	const FVector Child = Player ? Player->GetActorLocation() + FVector(0, 0, 20) : FVector(60, -70, 80);
+	const bool bDoorOpen = WardStep == 10;
+
+	// Her body follows him only when he has gone well round her, and then stays put: a person
+	// standing by a bed, not a turret. When the door opens she turns to it.
+	const float Facing = WardMom->GetActorRotation().Yaw - MomYawOffset;
+	const float BodyWant = ((bDoorOpen ? Door : Child) - MomSpot).Rotation().Yaw;
+	const float BodyOff = FMath::Abs(FMath::FindDeltaAngleDegrees(Facing, BodyWant));
+	bMomTurning = bMomTurning ? BodyOff > 6.f : BodyOff > 48.f;
+	if (bMomTurning)
+	{
+		const FRotator Want(0.f, BodyWant + MomYawOffset, 0.f);
+		WardMom->SetActorRotation(FMath::RInterpTo(WardMom->GetActorRotation(), Want, Dt, 1.8f));
+	}
+
+	// Her head does the looking: down at him, and for a glance, round to the door.
+	if (MomAnim)
+	{
+		const FVector Eyes = MomSpot + FVector(0, 0, 155);
+		const FRotator Look = (((MomGlance > 0.f || bDoorOpen) ? Door : Child) - Eyes).Rotation();
+		MomAnim->LookTowards(FMath::FindDeltaAngleDegrees(Facing, Look.Yaw), Look.Pitch);
+	}
+}
+
+void AHGGameMode::TickDoctors(float Dt, const AHGPlayer* Player)
+{
+	if (WardStep != 10)
+	{
+		return;
+	}
+	// They come along the hall as their shoes are heard, she first, and stop in the doorway looking in at him.
+	static const FVector Stops[] = { FVector(338, 152, 0), FVector(418, 222, 0) };
+	const FVector Child = Player ? Player->GetActorLocation() + FVector(0, 0, 20) : FVector(60, -70, 80);
+	for (int32 i = 0; i < WardDoctors.Num(); ++i)
+	{
+		AActor* Doctor = WardDoctors[i];
+		UHGPersonAnim* Anim = DoctorAnims.IsValidIndex(i) ? DoctorAnims[i].Get() : nullptr;
+		if (!Doctor || WardTimer < 2.2f + 0.8f * i)
+		{
+			continue;
+		}
+		const FVector At = Doctor->GetActorLocation();
+		FVector To = Stops[i] - At;
+		To.Z = 0.f;
+		const float Left = To.Size();
+		const bool bWalking = Left > 3.f;
+		const FVector Ahead = bWalking ? To : (Child - At);
+		if (bWalking)
+		{
+			Doctor->SetActorLocation(At + To / Left * FMath::Min(Left, DoctorSpeed * Dt));
+		}
+		const FRotator Want(0.f, Ahead.Rotation().Yaw + MomYawOffset, 0.f);
+		Doctor->SetActorRotation(FMath::RInterpTo(Doctor->GetActorRotation(), Want, Dt, bWalking ? 6.f : 2.5f));
+		if (Anim)
+		{
+			Anim->SetClip(bWalking ? PersonWalk.Get() : PersonIdle.Get(), bWalking ? 0.8f : 1.f);
+			const float Facing = Doctor->GetActorRotation().Yaw - MomYawOffset;
+			const FRotator Look = (Child - (At + FVector(0, 0, 160))).Rotation();
+			// Their eyes are on him from the moment the doorway lets them see him.
+			const bool bSees = Left < 260.f;
+			Anim->LookTowards(bSees ? FMath::FindDeltaAngleDegrees(Facing, Look.Yaw) : 0.f, bSees ? Look.Pitch : 0.f);
+		}
+	}
 }
 
 void AHGGameMode::BeginCutscene(AHGPlayer* Player)
@@ -451,6 +568,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	const float SecondsToTen = 240.f - RoundSeconds * ClockRate;
 	Level->SetClock(10.f - FMath::Max(SecondsToTen, 0.f) / 3600.f);
 	TickMom(Dt, Player, SecondsToTen);
+	TickDoctors(Dt, Player);
 	TickBank += Dt;
 	if (TickBank >= 1.f && WardStep < 10 && !bRealClock)
 	{
@@ -484,7 +602,8 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 		DoorOpen = FMath::FInterpConstantTo(DoorOpen, 1.f, Dt, 0.7f);
 		Level->SetDoorOpen(FMath::SmoothStep(0.f, 1.f, DoorOpen));
 		WardTimer += Dt;
-		if (WardTimer > 9.5f && !bOver)
+		// With the doctors in the game the scene holds on them standing in the doorway.
+		if (WardTimer > (WardDoctors.Num() > 0 ? 13.f : 9.5f) && !bOver)
 		{
 			bOver = true;
 			bWon = true;
@@ -817,7 +936,15 @@ void AHGGameMode::Tick(float DeltaSeconds)
 				++ShotStep;
 				ShotTimer = 0.f;
 			}
-			else if (ShotStep == 7 && ShotTimer > 1.5f)
+			else if (ShotStep == 7 && WardDoctors.Num() > 0 && ShotTimer > 7.f)
+			{
+				// The doctors, stopped in the doorway, from where he sits on the floor.
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-6-doctors.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-6-doctors"));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if ((ShotStep == 8 || (ShotStep == 7 && WardDoctors.Num() == 0)) && ShotTimer > 1.5f)
 			{
 				Finish(0);
 			}
