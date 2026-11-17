@@ -21,7 +21,7 @@ case "$VARIANT" in
     ;;
 esac
 
-if [ ! -f "$PROJECT_DIR/Binaries/Mac/UnrealEditor-HorrorGame.dylib" ]; then
+if [ ! -f "$PROJECT_DIR/Binaries/Mac/libUnrealEditor-HorrorGame.dylib" ]; then
   "$(dirname "$0")/build.sh"
 fi
 
