@@ -2,13 +2,19 @@
 
 Written 2026-11-17 while making "Mom". State now:
 
-- **Done:** the mother is a MetaHuman: character asset `/HorrorPrivate/MetaHumans/Mom/Mom`, rigged
-  and assembled into `/HorrorPrivate/MetaHumans/Mom/BP_Mom` (body, face, hair, clothes). The ward
-  spawns `BP_Mom`, plays the mannequin idle on her `Body` and turns her towards the child and,
-  now and then, the door. She wears a sweater, jeans and flats and has long straight hair with
-  a fringe, all free MetaHuman packages from Fab (see "Clothes and hair from Fab" below).
-- **Not done:** a softer face (it is in shadow under the fringe and reads stern), a head-only
-  glance instead of a whole-body turn, and the same for the doctors.
+- **Done:** three people are MetaHumans, each a character asset rigged and assembled into a
+  Blueprint under `/HorrorPrivate/MetaHumans/<Name>/BP_<Name>`:
+  - **Mom** (from the Jelena preset): a sweater, jeans and flats, long straight hair with a
+    fringe. She stands by the bed, looks down at the child and glances at the door by turning
+    her head and neck; her body turns only when he has gone well round her.
+  - **DoctorWoman** and **DoctorMan** (Grace and Walter): hospital whites. At ten they walk up
+    the hall and stop in the doorway, looking in at him.
+  Clothes and hair are free MetaHuman packages from Fab (see "Clothes and hair from Fab" below).
+  The bodies are moved by `UHGPersonAnim` (`Source/HorrorGame/HGPersonAnim.h`): one looping
+  clip, played in place, with the neck and head turned on top of it.
+- **Not done:** the doctors' masks, caps and head mirrors, and a real white coat (Fab has no
+  free one for MetaHumans; the paid ones are $10 to $21). Mom's expression is still neutral,
+  which reads stern. Walking is one clip slid along the floor, so feet slip a little.
 
 Helper used below: `Scripts/mcp.py call call_tool '{"toolset_name":..., "tool_name":..., "arguments":{...}}' 20000`.
 Toolset names: `E` = `metahuman_toolset.metahuman.MetaHumanToolset` (Epic's),
@@ -176,13 +182,27 @@ runs in the Python commandlet, so no editor opens.
 
    Each package lands in `/HorrorPrivate/MetaHumans/Wardrobe/<name>`; the log lines starting
    `HGASSET` name the wardrobe item (`WI_...`) of each outfit.
-3. Dress her and assemble. `Scripts/dress_mom.py` puts the items on the character, sets their
-   colours, and with `HG_BUILD=1` saves and assembles `BP_Mom`. Without `HG_BUILD` it only
-   logs each item's adjustable parameters and changes nothing on disk.
+3. Dress and assemble. `Scripts/dress_people.py` makes the character from a preset if it is
+   new, rigs it and fetches its textures from Epic's cloud, puts the items on, sets their
+   colours, and with `HG_BUILD=1` saves and assembles `BP_<Name>`. `HG_WHO` says who (`mom`,
+   `doctor_woman`, `doctor_man`, separated by commas; default `mom`). Without `HG_BUILD` it
+   only logs each item's adjustable parameters and changes nothing on disk.
+
+   Someone who has been assembled before, in the commandlet:
 
    ```bash
-   bash -c 'source Scripts/env.sh; HG_BUILD=1 "$UE_ROOT/Engine/Binaries/Mac/UnrealEditor-Cmd" "$PROJECT" -run=pythonscript -script="$PROJECT_DIR/Scripts/dress_mom.py" -unattended -nosplash -AllowCommandletRendering -RenderOffScreen -abslog=<log>'
+   bash -c 'source Scripts/env.sh; HG_BUILD=1 HG_WHO=mom "$UE_ROOT/Engine/Binaries/Mac/UnrealEditor-Cmd" "$PROJECT" -run=pythonscript -script="$PROJECT_DIR/Scripts/dress_people.py" -unattended -nosplash -AllowCommandletRendering -RenderOffScreen -abslog=<log>'
    ```
+
+   A new person, in the full editor with no window (about five minutes each; `HG_QUIT=1`
+   closes the editor when the script ends):
+
+   ```bash
+   bash -c 'source Scripts/env.sh; HG_BUILD=1 HG_QUIT=1 HG_WHO=doctor_woman "$UE_EDITOR" "$PROJECT" -ExecutePythonScript="$PROJECT_DIR/Scripts/dress_people.py" -RenderOffScreen -unattended -nosplash -nosound -abslog=<log>'
+   ```
+
+   One person per run, and check free disk and swap first: each editor run took about 6 GB of
+   swap on this Mac.
 
 What had to be found out:
 
@@ -199,11 +219,27 @@ What had to be found out:
 - **Assembling twice mixes up materials.** A second assembly over the first one's output in
   `Mom/Clothing` paired the sweater with the shoes' material. The script deletes that folder's
   assets (all generated) before each assembly.
+- **A changed groom does not reach the game.** Assembly keeps the copy of a groom already in
+  `<Name>/Grooms`, so new strand settings on the source groom did nothing until the script
+  deleted that copy (and its binding) before assembling.
 - **Adding an item twice.** `try_add_item_from_wardrobe_item` adds a second copy named
   `..._None_1` when the item is already in the character's palette; look it up first with
   `get_item_keys_for_wardrobe_item`.
 - **In a commandlet the asset registry has not scanned the plugin.** `does_asset_exist` says
   no for an asset that is on disk; `load_asset` finds it.
+- **A new character's first assembly cannot run in the commandlet.** Assembly bakes the face
+  textures (`<Name>/Face/Baked/T_EyeIris...`) with TextureGraph, which is not started in a
+  commandlet: `Couldn't find baked texture ... This should have been produced by the texture
+  graph`, `Collection build failed`, and then the process dies on a Slate assertion. Mom could
+  be reassembled headless only because her baked face textures already existed from her first
+  assembly in the editor. The cloud rig and texture download do work headless (the sign-in took
+  two and a half minutes to come through, the rig 166 seconds). So a new person is done in
+  the full editor instead, started with `-ExecutePythonScript` and `-RenderOffScreen`: no
+  window opens, TextureGraph runs, and the same script does everything (rig 19 to 27 seconds
+  there). After that first assembly the commandlet can reassemble them.
+- **Colours that are not wardrobe parameters.** The Fab shirt exposes none; its colours are in
+  its material instance (a `UseCustomColors` switch and five colour parameters), so the script
+  edits that asset. Every character wearing the shirt therefore gets the same colours.
 - **"Failed to generated pre-baked groom textures".** Logged on every commandlet assembly
   (`TextureGraph engine is not initialised`). It bakes brows into the far face textures; the
   assembly still succeeds and nothing visible in the ward is missing.

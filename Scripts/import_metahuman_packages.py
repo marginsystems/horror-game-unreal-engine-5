@@ -22,6 +22,7 @@ FOLDERS = {
     "oa_jeans": "Jeans",
     "oa_flats": "Flats",
     "oa_sweater": "Sweater",
+    "oa_shirt_04": "ShirtLongSleeve",
     "gb_hair_straighthairwithairbangs": "HairStraightBangs",
 }
 
