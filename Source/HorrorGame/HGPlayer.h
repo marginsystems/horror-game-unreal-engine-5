@@ -34,6 +34,10 @@ public:
 	FVector EyeForward() const;
 
 	void UseItem();
+	/** Scene one: pick up the toy being looked at, or put down or post the one being held. */
+	void Interact();
+	bool IsChild() const { return bChild; }
+	class AHGToy* HeldToy() const { return Held; }
 	void SmackFlashlight();
 	void SelectSlot(int32 Index);
 	void LookAt(const FVector& Target);
@@ -58,6 +62,13 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UCameraComponent> Camera;
+
+	/** The toy in the child's hands, in the ward. */
+	UPROPERTY()
+	TObjectPtr<class AHGToy> Held;
+
+	/** True in the story's first scene: a five-year-old's height, pace and hands; no flashlight, no weapons. */
+	bool bChild = false;
 
 	UPROPERTY()
 	TObjectPtr<USpotLightComponent> Flashlight;

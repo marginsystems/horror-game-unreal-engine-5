@@ -1,10 +1,18 @@
 #include "HGGameMode.h"
 
 #include "Components/AudioComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/Texture.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "ReferenceSkeleton.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/ExponentialHeightFog.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
 #include "HGActors.h"
 #include "HGLevel.h"
@@ -16,6 +24,9 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "ShaderCompiler.h"
+#if WITH_EDITOR
+#include "AssetCompilingManager.h"
+#endif
 #include "Sound/SoundBase.h"
 #include "UnrealClient.h"
 
@@ -63,6 +74,23 @@ void AHGGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 	Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	Level = World->SpawnActor<AHGLevel>(FVector::ZeroVector, FRotator::ZeroRotator, Always);
+	if (Variant == EHGVariant::Ward)
+	{
+		// Scene one of the story: one bright room, built here; no monster, no fuses.
+		Level->BuildWard();
+		const FVector Start(150, -210, 70);
+		StartSpot = World->SpawnActor<APlayerStart>(Start, (FVector(40, -40, 40) - Start).Rotation(), Always);
+		PopulateWard();
+		UE_LOG(LogHG, Log, TEXT("HGTEST START variant=%s (story scene)"), HG::VariantKey(Variant));
+		return;
+	}
+	if (Variant == EHGVariant::Hospital)
+	{
+		// A ready-made map. Its floor can only be walked once the map's collision exists, so the
+		// round is laid out in StartPlay; the player starts wherever the map says.
+		UE_LOG(LogHG, Log, TEXT("HGTEST START variant=%s (ready-made map)"), HG::VariantKey(Variant));
+		return;
+	}
 	Level->Build(Variant);
 	FusesTotal = Level->FuseTiles.Num();
 
@@ -127,13 +155,275 @@ AActor* AHGGameMode::ChoosePlayerStart_Implementation(AController* Player)
 void AHGGameMode::StartPlay()
 {
 	Super::StartPlay();
-	Say(FString::Printf(TEXT("Find %d fuses. Power the exit shutter. Leave."), FusesTotal), 7.f);
+	if (Variant == EHGVariant::Hospital)
+	{
+		PopulateWorldMap();
+	}
+	if (Variant != EHGVariant::Ward)
+	{
+		Say(FString::Printf(TEXT("Find %d fuses. Power the exit shutter. Leave."), FusesTotal), 7.f);
+	}
 
 	// The room tone for this place, looping under everything else.
 	const FString Ambience = FString::Printf(TEXT("amb_%s"), HG::VariantKey(Variant));
 	if (USoundBase* Found = HG::Sound(*Ambience))
 	{
 		UGameplayStatics::SpawnSound2D(this, Found, 0.55f);
+	}
+}
+
+void AHGGameMode::PopulateWorldMap()
+{
+	UWorld* World = GetWorld();
+	FActorSpawnParameters Always;
+	Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	APawn* Pawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	// A kit's demo map has no player start, so the player arrives at the world origin, which may be
+	// outside the building. Put them on a floor inside it.
+	const bool bHasStart = static_cast<bool>(TActorIterator<APlayerStart>(World));
+	FVector Inside;
+	if (Pawn && !bHasStart && Level->FindStandableSpot(Inside))
+	{
+		Pawn->SetActorLocation(Inside + FVector(0, 0, 100), false, nullptr, ETeleportType::TeleportPhysics);
+	}
+	Level->BuildFromWorld(Pawn ? Pawn->GetActorLocation() : FVector(0, 0, 200));
+	FusesTotal = Level->FuseSpots.Num();
+
+	for (const FVector& Spot : Level->FuseSpots)
+	{
+		if (AHGPickup* Pickup = World->SpawnActor<AHGPickup>(Spot + FVector(0, 0, 75), FRotator::ZeroRotator, Always))
+		{
+			Pickup->Setup(EHGItem::Fuse);
+		}
+	}
+	for (const TPair<FVector, EHGItem>& Entry : Level->ItemSpots)
+	{
+		if (AHGPickup* Pickup = World->SpawnActor<AHGPickup>(Entry.Key + FVector(0, 0, 75), FRotator::ZeroRotator, Always))
+		{
+			Pickup->Setup(Entry.Value);
+		}
+	}
+	Monster = World->SpawnActor<AHGMonster>(Level->MonsterSpot, FRotator::ZeroRotator, Always);
+	Monster->Setup(HG::MonsterFor(Variant), Level);
+	UE_LOG(LogHG, Log, TEXT("HGTEST START variant=%s monster=%s fuses=%d"), HG::VariantKey(Variant), Monster->DisplayName(), FusesTotal);
+}
+
+void AHGGameMode::PopulateWard()
+{
+	UWorld* World = GetWorld();
+	FActorSpawnParameters Always;
+	Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// The sorter in the middle of the rug, its three shapes scattered round it.
+	WardSorter = World->SpawnActor<AHGSorter>(FVector(60, -70, 2), FRotator(0.f, 25.f, 0.f), Always);
+	WardSorter->Setup();
+	const TPair<const TCHAR*, FVector> Shapes[] = {
+		{ TEXT("Circle"), FVector(135, -125, 2) }, { TEXT("Square"), FVector(-5, -150, 2) }, { TEXT("Triangle"), FVector(110, 5, 2) },
+	};
+	for (const TPair<const TCHAR*, FVector>& Shape : Shapes)
+	{
+		AHGToy* Toy = World->SpawnActor<AHGToy>(Shape.Value, FRotator(0.f, FMath::FRandRange(0.f, 360.f), 0.f), Always);
+		Toy->SetupModel(FName(*FString(Shape.Key).ToLower()), *FString::Printf(TEXT("Toy_%s"), Shape.Key));
+	}
+
+	// Everything below comes from the private assets plugin and is simply absent without it.
+	USceneComponent* Room = Level->GetRootComponent();
+
+	// The bed, along the window wall. The pack's bed comes in three pieces, a hundred times too big.
+	bool bBed = false;
+	for (const TCHAR* Part : { TEXT("bed_bed_0"), TEXT("blanket_blanket_0"), TEXT("mattress_mattress_0") })
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Ward/Bed/old_hospital_bed_pbrgr/StaticMeshes/%s.%s"), Part, Part);
+		if (UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			UStaticMeshComponent* Piece = NewObject<UStaticMeshComponent>(Level);
+			Piece->SetMobility(EComponentMobility::Movable);
+			Piece->SetStaticMesh(Mesh);
+			Piece->SetupAttachment(Room);
+			Piece->SetRelativeLocation(FVector(-185, 100, 3));
+			Piece->SetRelativeScale3D(FVector(0.01f));
+			Piece->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Piece->RegisterComponent();
+			Level->AddInstanceComponent(Piece);
+			bBed = true;
+		}
+	}
+	if (bBed)
+	{
+		// Something solid where the bed is, so nobody walks through it.
+		HG::AddShape(Level, Room, TEXT("Cube"), FVector(-185, 200, 28), FVector(1.3f, 2.1f, 0.56f), FLinearColor::Black, 0.f, true)->SetVisibility(false);
+	}
+
+	// Old toys: a plush rabbit, a tin robot, a train, a ball, a boat, wooden blocks.
+	struct FPackToy { const TCHAR* Kind; const TCHAR* Mesh; FVector At; };
+	const FPackToy Toys[] = {
+		{ TEXT("rabbit"), TEXT("SM_ToyBunny"), FVector(-40, 20, 1) }, { TEXT("robot"), TEXT("SM_ToyRobot"), FVector(170, -15, 1) },
+		{ TEXT("train"), TEXT("SM_ToyTrain"), FVector(5, -225, 1) }, { TEXT("ball"), TEXT("SM_Ball"), FVector(190, -175, 1) },
+		{ TEXT("boat"), TEXT("SM_ToyBoat"), FVector(-80, -95, 1) }, { TEXT("block"), TEXT("SM_ToyCube_01a"), FVector(108, -212, 1) },
+		{ TEXT("block"), TEXT("SM_ToyCube_02a"), FVector(86, -190, 1) },
+	};
+	for (const FPackToy& Entry : Toys)
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Ward/Toys/%s.%s"), Entry.Mesh, Entry.Mesh);
+		if (UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			AHGToy* Toy = World->SpawnActor<AHGToy>(Entry.At, FRotator(0.f, FMath::FRandRange(0.f, 360.f), 0.f), Always);
+			Toy->SetupMesh(FName(Entry.Kind), Mesh, 1.f);
+			if (FName(Entry.Kind) == FName(TEXT("rabbit")))
+			{
+				WardRabbit = Toy;
+			}
+		}
+	}
+
+	// Mom, standing by the bed, watching him play. Neither woman we have is good enough to show yet
+	// (one pokes through her clothes, the other does not take the animations), so she is only put in
+	// the room when asked for: -Mom=quat or -Mom=real. Without her, the rabbit task is skipped.
+	FString WhichMom;
+	if (!FParse::Value(FCommandLine::Get(), TEXT("Mom="), WhichMom))
+	{
+		WardRabbit = nullptr;
+		return;
+	}
+	AActor* Mom = World->SpawnActor<AActor>(MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation(), Always);
+	USceneComponent* MomRoot = NewObject<USceneComponent>(Mom);
+	MomRoot->SetMobility(EComponentMobility::Movable);
+	Mom->SetRootComponent(MomRoot);
+	MomRoot->RegisterComponent();
+	Mom->SetActorLocationAndRotation(MomSpot, FRotator(0.f, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, 0.f));
+	TArray<FString> Parts;
+	for (const TCHAR* Part : { TEXT("Arms"), TEXT("Body"), TEXT("Feet"), TEXT("Legs") })
+	{
+		Parts.Add(FString::Printf(TEXT("/HorrorPrivate/Characters/Mom/Female_Peasant/SkeletalMeshes/Female_Peasant_%s.Female_Peasant_%s"), Part, Part));
+	}
+	for (const TCHAR* Part : { TEXT("Superhero_Female"), TEXT("Eyes"), TEXT("Eyebrows") })
+	{
+		Parts.Add(FString::Printf(TEXT("/HorrorPrivate/Characters/Woman/Superhero_Female_FullBody/SkeletalMeshes/%s.%s"), Part, Part));
+	}
+	// -Mom=real tries the realistic woman from Fab instead, to compare the two.
+	FString MomKind;
+	FParse::Value(FCommandLine::Get(), TEXT("Mom="), MomKind);
+	const bool bRealMom = MomKind == TEXT("real");
+	if (bRealMom)
+	{
+		Parts.Reset();
+		Parts.Add(TEXT("/HorrorPrivate/Characters/MomReal/army_girl.army_girl"));
+	}
+	if (USkeletalMeshComponent* Rig = HG::AddPerson(Mom, MomRoot, Parts, bRealMom ? 0.9f : 1.f))
+	{
+		HG::PlayPersonClip(Rig, TEXT("Idle_Loop"));
+		// Fair skin: the pack's body ships with its dark skin as the default.
+		if (UTexture* Fair = LoadObject<UTexture>(nullptr, TEXT("/HorrorPrivate/Characters/Woman/Skins/T_Superhero_Female_Light_BaseColor.T_Superhero_Female_Light_BaseColor"), nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			TArray<USkeletalMeshComponent*> Skins;
+			Mom->GetComponents(Skins);
+			for (USkeletalMeshComponent* Skin : Skins)
+			{
+				if (Skin->GetSkeletalMeshAsset() && Skin->GetSkeletalMeshAsset()->GetName() == TEXT("Superhero_Female"))
+				{
+					for (int32 i = 0; i < Skin->GetNumMaterials(); ++i)
+					{
+						if (UMaterialInstanceDynamic* Material = Skin->CreateDynamicMaterialInstance(i))
+						{
+							Material->SetTextureParameterValue(TEXT("BaseColorTexture"), Fair);
+						}
+					}
+				}
+			}
+		}
+		// Her hair: straight, past the shoulders, blonde. The pack's hair is a loose mesh in the body's
+		// own space, so it is hung on the head bone at the inverse of that bone's rest position.
+		UStaticMesh* HairMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/HorrorPrivate/Characters/MomHair/Hair_Long/StaticMeshes/Hair_Long.Hair_Long"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		const FReferenceSkeleton& Skeleton = Rig->GetSkeletalMeshAsset()->GetRefSkeleton();
+		FName HeadBone = NAME_None;
+		for (const TCHAR* Name : { TEXT("Head"), TEXT("head") })
+		{
+			if (Skeleton.FindBoneIndex(FName(Name)) != INDEX_NONE) { HeadBone = FName(Name); }
+		}
+		if (HairMesh && !HeadBone.IsNone() && !bRealMom)
+		{
+			FTransform HeadRest = FTransform::Identity;
+			for (int32 Bone = Skeleton.FindBoneIndex(HeadBone); Bone != INDEX_NONE; Bone = Skeleton.GetParentIndex(Bone))
+			{
+				HeadRest = HeadRest * Skeleton.GetRefBonePose()[Bone];
+			}
+			UStaticMeshComponent* Hair = NewObject<UStaticMeshComponent>(Mom);
+			Hair->SetMobility(EComponentMobility::Movable);
+			Hair->SetStaticMesh(HairMesh);
+			Hair->SetupAttachment(Rig, HeadBone);
+			Hair->SetRelativeTransform(HeadRest.Inverse());
+			Hair->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Hair->RegisterComponent();
+			Mom->AddInstanceComponent(Hair);
+			if (UMaterialInstanceDynamic* Blonde = Hair->CreateDynamicMaterialInstance(0))
+			{
+				if (UTexture* Plain = LoadObject<UTexture>(nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture")))
+				{
+					Blonde->SetTextureParameterValue(TEXT("BaseColorTexture"), Plain);
+				}
+				Blonde->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(0.80f, 0.60f, 0.28f));
+			}
+		}
+	}
+}
+
+void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
+{
+	switch (WardStep)
+	{
+	case 0:
+		if (RoundSeconds > 6.f)
+		{
+			Say(TEXT("Put the shapes in the box."), 7.f);
+			WardStep = 1;
+		}
+		break;
+	case 1:
+		if (WardSorter && WardSorter->Filled >= 3)
+		{
+			Say(TEXT("Mama smiles."), 4.f);
+			WardTimer = 0.f;
+			WardStep = 2;
+		}
+		break;
+	case 2:
+		WardTimer += Dt;
+		if (WardTimer > 4.5f)
+		{
+			WardTimer = 0.f;
+			if (WardRabbit)
+			{
+				Say(TEXT("Bring her the rabbit."), 7.f);
+				WardStep = 3;
+			}
+			else
+			{
+				WardStep = 4;
+			}
+		}
+		break;
+	case 3:
+		if (WardRabbit && Player->HeldToy() != WardRabbit && FVector::Dist2D(WardRabbit->GetActorLocation(), MomSpot) < 170.f)
+		{
+			Say(TEXT("She holds it for you."), 4.f);
+			WardTimer = 0.f;
+			WardStep = 4;
+		}
+		break;
+	default:
+		WardTimer += Dt;
+		if (WardTimer > 4.f && !bOver)
+		{
+			bOver = true;
+			bWon = true;
+			EndTitle = TEXT("THE DOCTORS COME IN");
+			EndLines.Reset();
+			EndLines.Add(TEXT("End of the first scene."));
+			EndLines.Add(TEXT("The next one is being built."));
+			UE_LOG(LogHG, Log, TEXT("HGTEST WARD done seconds=%d"), FMath::RoundToInt32(RoundSeconds));
+		}
+		break;
 	}
 }
 
@@ -230,7 +520,8 @@ void AHGGameMode::Win()
 
 void AHGGameMode::Travel(EHGVariant To)
 {
-	UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, FString::Printf(TEXT("Variant=%s"), HG::VariantKey(To)));
+	// The game mode is named in the options because a ready-made map may ask for its own.
+	UGameplayStatics::OpenLevel(this, FName(HG::MapFor(To)), true, FString::Printf(TEXT("Variant=%s?game=/Script/HorrorGame.HGGameMode"), HG::VariantKey(To)));
 }
 
 void AHGGameMode::Finish(int32 ExitCode)
@@ -251,10 +542,83 @@ void AHGGameMode::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// Until everything on screen is ready the round does not start: nothing hunts you and no clock runs.
+	LoadingLeft = GShaderCompilingManager ? GShaderCompilingManager->GetNumRemainingJobs() : 0;
+#if WITH_EDITOR
+	LoadingLeft += FAssetCompilingManager::Get().GetNumRemainingAssets();
+#endif
+	if (IsLoading())
+	{
+		ShotTimer = 0.f;
+		return;
+	}
+
+	if (Variant == EHGVariant::Ward)
+	{
+		// The story's first scene has its own small script and none of the fuse-hunt rules.
+		if (!bOver)
+		{
+			RoundSeconds += DeltaSeconds;
+			TickWard(DeltaSeconds, Player);
+		}
+		if (bShots)
+		{
+			ShotTimer += DeltaSeconds;
+			if (ShotStep == 0 && ShotTimer > 7.f)
+			{
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-1-start.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-1-start"));
+				Player->SetActorLocation(FVector(190, 150, 60));
+				Player->LookAt(FVector(-100, -120, 40));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 1 && ShotTimer > 2.5f)
+			{
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-2-room.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-2-room"));
+				Player->SetActorLocation(FVector(-150, -200, 60));
+				Player->LookAt(MomSpot + FVector(0, 0, 90));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 2 && ShotTimer > 2.5f)
+			{
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-3-bed.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-3-bed"));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 3 && ShotTimer > 0.5f)
+			{
+				// Up close to mom, from where a five-year-old would look at her.
+				Player->SetActorLocation(MomSpot + FVector(25, -150, 60));
+				Player->LookAt(MomSpot + FVector(0, 0, 125));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 4 && ShotTimer > 2.5f)
+			{
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-4-mom.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-4-mom"));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 5 && ShotTimer > 2.f)
+			{
+				Finish(0);
+			}
+		}
+		return;
+	}
+
 	if (!bOver)
 	{
 		RoundSeconds += DeltaSeconds;
-		if (Level->ToTile(Player->GetActorLocation()) == Level->ExitTile)
+		const bool bAtExit = Level->bWorld
+			? (RoundSeconds > 5.f && Fuses >= FusesTotal && FVector::Dist(Player->GetActorLocation(), Level->ExitSpot + FVector(0, 0, 88)) < 220.f)
+			: Level->ToTile(Player->GetActorLocation()) == Level->ExitTile;
+		if (bAtExit)
 		{
 			if (Fuses >= FusesTotal)
 			{
@@ -267,6 +631,16 @@ void AHGGameMode::Tick(float DeltaSeconds)
 		}
 	}
 
+	if (!Monster)
+	{
+		return;
+	}
+	if (Level->bWorld)
+	{
+		// The self-play checks know the text-built places only; a ready-made map just gets its pictures taken.
+		if (bShots) { TickWorldShots(DeltaSeconds, Player); }
+		return;
+	}
 	if (bBot && bCatch) { TickCatchBot(DeltaSeconds, Player); }
 	else if (bBot) { TickBot(DeltaSeconds, Player); }
 	if (bShots) { TickShots(DeltaSeconds, Player); }
@@ -397,6 +771,52 @@ void AHGGameMode::TickCatchBot(float Dt, AHGPlayer* Player)
 	}
 }
 
+void AHGGameMode::TickWorldShots(float Dt, AHGPlayer* Player)
+{
+	if (GShaderCompilingManager && GShaderCompilingManager->GetNumRemainingJobs() > 0)
+	{
+		ShotTimer = 0.f;
+		return;
+	}
+	ShotTimer += Dt;
+	Player->Composure = 1.f;
+	// Held still for the pictures.
+	Monster->Stun(0.5f);
+	auto Shoot = [this](const TCHAR* Name)
+	{
+		const FString File = FPaths::ProjectSavedDir() / TEXT("Shots") / FString::Printf(TEXT("%s-%s.png"), HG::VariantKey(Variant), Name);
+		FScreenshotRequest::RequestScreenshot(File, true, false);
+		UE_LOG(LogHG, Log, TEXT("HGTEST SHOT %s"), *File);
+	};
+	switch (ShotStep)
+	{
+	case 0:
+		if (ShotTimer > 6.f) { Shoot(TEXT("1-start")); ++ShotStep; ShotTimer = 0.f; }
+		break;
+	case 1:
+		if (ShotTimer > 1.f)
+		{
+			// A few steps along the monster's own route to the player, looking back at it.
+			TArray<FVector> Route;
+			Level->FindWorldPath(Monster->GetActorLocation(), Player->GetActorLocation() - FVector(0, 0, 88), Route);
+			if (Route.Num() > 0)
+			{
+				Player->SetActorLocation(Route[FMath::Min(4, Route.Num() - 1)] + FVector(0, 0, 100));
+			}
+			++ShotStep;
+			ShotTimer = 0.f;
+		}
+		break;
+	case 2:
+		Player->LookAt(Monster->Chest());
+		if (ShotTimer > 2.5f) { Shoot(TEXT("2-monster")); ++ShotStep; ShotTimer = 0.f; }
+		break;
+	default:
+		if (ShotTimer > 1.5f) { Finish(0); }
+		break;
+	}
+}
+
 void AHGGameMode::TickShots(float Dt, AHGPlayer* Player)
 {
 	// Waits for shaders, then walks through a few staged moments and saves a picture of each.
@@ -507,17 +927,57 @@ void AHGHUD::DrawHUD()
 		DrawRect(FLinearColor::Black, 0.f, 0.f, W, H);
 	}
 
+	if (Game->IsLoading())
+	{
+		DrawRect(FLinearColor::Black, 0.f, 0.f, W, H);
+		Centered(TEXT("LOADING"), H * 0.42f, 2.6f * S, FLinearColor::White);
+		Centered(FString::Printf(TEXT("%d things left to prepare. The first start of a new place takes a while."), Game->LoadingLeft), H * 0.54f, 1.1f * S, Dim);
+		return;
+	}
+
+	const bool bStory = Game->GetVariant() == EHGVariant::Ward;
+	if (bStory)
+	{
+		// Film bars, top and bottom.
+		DrawRect(FLinearColor::Black, 0.f, 0.f, W, H * 0.09f);
+		DrawRect(FLinearColor::Black, 0.f, H * 0.91f, W, H * 0.09f);
+	}
+
 	if (Game->IsOver())
 	{
-		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.72f), 0.f, 0.f, W, H);
-		Centered(Game->EndTitle, H * 0.22f, 4.2f * S, Game->HasWon() ? FLinearColor(0.5f, 1.f, 0.6f) : FLinearColor(0.95f, 0.1f, 0.08f));
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, bStory ? 0.92f : 0.72f), 0.f, 0.f, W, H);
+		Centered(Game->EndTitle, H * 0.22f, 4.2f * S, bStory ? FLinearColor::White : (Game->HasWon() ? FLinearColor(0.5f, 1.f, 0.6f) : FLinearColor(0.95f, 0.1f, 0.08f)));
 		float Y = H * 0.42f;
 		for (const FString& Line : Game->EndLines)
 		{
 			Centered(Line, Y, 1.5f * S, FLinearColor::White);
 			Y += 40.f * S;
 		}
-		Centered(TEXT("R  try again      F1  clinic      F2  office      F3  mine      Cmd+Q  quit"), H * 0.8f, 1.2f * S, Dim);
+		Centered(TEXT("R  try again      F1  clinic      F2  office      F3  mine      F4  hospital      Cmd+Q  quit"), H * 0.8f, 1.2f * S, Dim);
+		return;
+	}
+
+	if (bStory)
+	{
+		// No meters, no inventory. A dot to aim with, a title card, and the odd line of text.
+		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.55f), W * 0.5f - 1.5f, H * 0.5f - 1.5f, 3.f, 3.f);
+		if (Game->RoundSeconds < 6.f)
+		{
+			const float Alpha = FMath::Clamp(5.f - Game->RoundSeconds, 0.f, 1.f);
+			DrawRect(FLinearColor(0.f, 0.f, 0.f, Alpha), 0.f, 0.f, W, H);
+			Centered(TEXT("RUSSIA, 1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha));
+			Centered(TEXT("Based on a true story."), H * 0.52f, 1.3f * S, FLinearColor(Dim.R, Dim.G, Dim.B, Alpha));
+		}
+		else if (Game->RoundSeconds < 16.f)
+		{
+			const float Alpha = FMath::Clamp(16.f - Game->RoundSeconds, 0.f, 1.f);
+			Centered(TEXT("WASD move      Mouse look      Click to pick up and put down"), H * 0.845f, 1.05f * S, FLinearColor(Dim.R, Dim.G, Dim.B, Alpha));
+		}
+		if (Now < Game->MessageUntil)
+		{
+			const float Alpha = FMath::Clamp((Game->MessageUntil - Now) * 2.f, 0.f, 1.f);
+			Centered(Game->Message, H * 0.78f, 1.6f * S, FLinearColor(1.f, 1.f, 1.f, Alpha));
+		}
 		return;
 	}
 

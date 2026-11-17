@@ -29,6 +29,10 @@ PIVOTS = {
     "Librarian_Shush": (0.0, 0.24, 1.93),
     "Mouth_Bottom": (0.0, 0.0, 0.0),
     "Mouth_Top": (-0.60, 0.0, 1.00),
+    "Toy_Sorter": (0.0, 0.0, 0.0),
+    "Toy_Circle": (0.0, 0.0, 0.0),
+    "Toy_Square": (0.0, 0.0, 0.0),
+    "Toy_Triangle": (0.0, 0.0, 0.0),
 }
 
 
@@ -455,6 +459,40 @@ def build_mouth():
 
 
 # ------------------------------------------------------------------------------------------
+# The shape sorter from the ward: a wooden box with three holes, and the three shapes.
+
+def prism(centre, radius, height, mat, sides):
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=sides, radius1=radius, radius2=radius, depth=height)
+    bm.transform(placed(centre))
+    return to_object(bm, mat)
+
+
+def build_toys():
+    wood = material("C99A5B")
+    hole = material("1E120A")
+    red = material("D83A2E")
+    blue = material("2F6FD0")
+    yellow = material("F2C230")
+
+    # Holes are 9 cm apart along X, in the order circle, square, triangle. HGActors.cpp seats the shapes there.
+    top = 0.22
+    sorter = [
+        box((0.0, 0.0, top * 0.5), (0.34, 0.16, top), wood),
+        prism((-0.09, 0.0, top + 0.002), 0.050, 0.006, red, 24),
+        prism((-0.09, 0.0, top + 0.004), 0.041, 0.006, hole, 24),
+        box((0.0, 0.0, top + 0.002), (0.094, 0.094, 0.006), blue),
+        box((0.0, 0.0, top + 0.004), (0.078, 0.078, 0.006), hole),
+        prism((0.09, 0.0, top + 0.002), 0.058, 0.006, yellow, 3),
+        prism((0.09, 0.0, top + 0.004), 0.047, 0.006, hole, 3),
+    ]
+    finish("Toy_Sorter", sorter)
+    finish("Toy_Circle", [prism((0.0, 0.0, 0.045), 0.038, 0.09, red, 24)])
+    finish("Toy_Square", [box((0.0, 0.0, 0.0375), (0.072, 0.072, 0.075), blue)])
+    finish("Toy_Triangle", [prism((0.0, 0.0, 0.045), 0.044, 0.09, yellow, 3)])
+
+
+# ------------------------------------------------------------------------------------------
 # Export, and an optional picture of all three standing in a row.
 
 def export(folder):
@@ -559,6 +597,7 @@ def main():
     build_gary()
     build_librarian()
     build_mouth()
+    build_toys()
     export(folder)
     if len(arguments) > 1:
         preview(arguments[1])

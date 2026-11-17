@@ -1,9 +1,15 @@
 #include "HGLevel.h"
 
+#include "Algo/Reverse.h"
+#include "Engine/StaticMeshActor.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+
 #include "Materials/MaterialInstanceDynamic.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 
 namespace
@@ -391,6 +397,14 @@ bool AHGLevel::FindPath(FIntPoint From, FIntPoint To, TArray<FIntPoint>& OutPath
 
 bool AHGLevel::HasLineOfSight(const FVector& A, const FVector& B) const
 {
+	if (bWorld)
+	{
+		// A ready-made map: ask the physics scene instead of the text grid.
+		FHitResult Hit;
+		const FCollisionQueryParams Params(FName(TEXT("HGSight")), false);
+		return !GetWorld()->LineTraceSingleByObjectType(Hit, A + FVector(0, 0, 20), B + FVector(0, 0, 20),
+			FCollisionObjectQueryParams(FCollisionObjectQueryParams::InitType::AllStaticObjects), Params);
+	}
 	const float Distance = FVector::Dist2D(A, B);
 	const int32 Steps = FMath::Max(1, FMath::CeilToInt32(Distance / 40.f));
 	for (int32 i = 0; i <= Steps; ++i)
@@ -442,6 +456,10 @@ FIntPoint AHGLevel::NearestOpenTile(FIntPoint T) const
 
 float AHGLevel::WallDistance(const FVector& From, const FVector& Direction, float MaxDistance) const
 {
+	if (bWorld)
+	{
+		return -1.f;
+	}
 	float Open = 0.f;
 	for (float D = 20.f; D <= MaxDistance; D += 20.f)
 	{
@@ -460,4 +478,457 @@ float AHGLevel::WallDistance(const FVector& From, const FVector& Direction, floa
 		Open = D;
 	}
 	return -1.f;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Ready-made maps
+
+namespace
+{
+	// Half-metre steps: a full metre strides straight past a doorway that is not lined up with the grid.
+	const float WalkStep = 50.f;
+	const float WalkRange = 9000.f;
+	const int32 WalkLimit = 60000;
+	const FIntPoint WalkDirs[4] = { FIntPoint(1, 0), FIntPoint(0, 1), FIntPoint(-1, 0), FIntPoint(0, -1) };
+
+	FCollisionObjectQueryParams SolidThings()
+	{
+		return FCollisionObjectQueryParams(FCollisionObjectQueryParams::InitType::AllStaticObjects);
+	}
+}
+
+bool AHGLevel::BodyFits(const FVector& A, const FVector& B) const
+{
+	// Chest and head height: something person-sized can get from A to B.
+	FHitResult Hit;
+	const FCollisionQueryParams Params(FName(TEXT("HGWalk")), false);
+	const FCollisionShape Body = FCollisionShape::MakeSphere(21.f);
+	return !GetWorld()->SweepSingleByObjectType(Hit, A + FVector(0, 0, 100), B + FVector(0, 0, 100), FQuat::Identity, SolidThings(), Body, Params)
+		&& !GetWorld()->SweepSingleByObjectType(Hit, A + FVector(0, 0, 165), B + FVector(0, 0, 165), FQuat::Identity, SolidThings(), Body, Params);
+}
+
+void AHGLevel::BuildFromWorld(const FVector& Start)
+{
+	bWorld = true;
+	Variant = EHGVariant::Hospital;
+	UWorld* World = GetWorld();
+	const FCollisionQueryParams Params(FName(TEXT("HGFloor")), false);
+
+	auto FloorUnder = [World, &Params](const FVector& At, float Up, float Down, FVector& Out)
+	{
+		FHitResult Hit;
+		if (!World->LineTraceSingleByObjectType(Hit, At + FVector(0, 0, Up), At - FVector(0, 0, Down), SolidThings(), Params))
+		{
+			return false;
+		}
+		if (Hit.bStartPenetrating || Hit.ImpactNormal.Z < 0.7f)
+		{
+			return false;
+		}
+		Out = Hit.ImpactPoint;
+		return true;
+	};
+
+	FVector First = Start;
+	if (!FloorUnder(Start, 60.f, 600.f, First))
+	{
+		First = Start - FVector(0, 0, 90);
+	}
+
+	TArray<FIntPoint> Cells;
+	TMap<FIntVector, int32> Index;
+	auto KeyOf = [](FIntPoint Cell, float Z) { return FIntVector(Cell.X, Cell.Y, FMath::FloorToInt32(Z / 150.f)); };
+	const FIntPoint Origin(FMath::RoundToInt32(First.X / WalkStep), FMath::RoundToInt32(First.Y / WalkStep));
+	Spots.Add(First);
+	Cells.Add(Origin);
+	Index.Add(KeyOf(Origin, First.Z), 0);
+
+	for (int32 i = 0; i < Spots.Num(); ++i)
+	{
+		for (int32 d = 0; d < 4; ++d)
+		{
+			int32 Linked = INDEX_NONE;
+			const FIntPoint Cell = Cells[i] + WalkDirs[d];
+			const FVector Probe(Cell.X * WalkStep, Cell.Y * WalkStep, Spots[i].Z);
+			FVector Floor;
+			// A step up or down of well under a metre: enough for stairs and ramps, not for ledges.
+			if (FVector::Dist2D(Probe, First) <= WalkRange && FloorUnder(Probe, 75.f, 95.f, Floor) && BodyFits(Spots[i], Floor))
+			{
+				const FIntVector Key = KeyOf(Cell, Floor.Z);
+				if (const int32* Known = Index.Find(Key))
+				{
+					Linked = *Known;
+				}
+				else if (Spots.Num() < WalkLimit)
+				{
+					Linked = Spots.Add(Floor);
+					Cells.Add(Cell);
+					Index.Add(Key, Linked);
+				}
+			}
+			Links.Add(Linked);
+		}
+	}
+	// Spots added after the loop passed them have no links yet; the loop above covers all, since it runs to the end.
+	for (int32 i = 0; i < Spots.Num(); ++i)
+	{
+		Columns.FindOrAdd(Cells[i]).Add(i);
+	}
+
+	// How many steps each place is from the start.
+	TArray<int32> Steps;
+	Steps.Init(-1, Spots.Num());
+	TArray<int32> Queue;
+	Queue.Add(0);
+	Steps[0] = 0;
+	for (int32 q = 0; q < Queue.Num(); ++q)
+	{
+		const int32 At = Queue[q];
+		for (int32 d = 0; d < 4; ++d)
+		{
+			const int32 To = Links[At * 4 + d];
+			if (To != INDEX_NONE && Steps[To] < 0)
+			{
+				Steps[To] = Steps[At] + 1;
+				Queue.Add(To);
+			}
+		}
+	}
+
+	StartSpot = Spots[0];
+	ExitSpot = Spots[0];
+	// The monster starts as far away as the building allows: a long walk away, and of those places,
+	// the one furthest in a straight line, so it is never just the other side of a wall.
+	int32 Farthest = 0;
+	for (int32 i = 0; i < Spots.Num(); ++i)
+	{
+		if (Steps[i] > Steps[Farthest]) { Farthest = i; }
+	}
+	int32 MonsterAt = Farthest;
+	for (int32 i = 0; i < Spots.Num(); ++i)
+	{
+		if (Steps[i] * 10 >= Steps[Farthest] * 6 && FVector::Dist(Spots[i], Spots[0]) > FVector::Dist(Spots[MonsterAt], Spots[0]))
+		{
+			MonsterAt = i;
+		}
+	}
+	MonsterSpot = Spots[MonsterAt];
+
+	// Fuses: spread out. Each new one goes where it is furthest from the start and from the fuses already placed.
+	TArray<FVector> Taken;
+	Taken.Add(StartSpot);
+	for (int32 n = 0; n < 5; ++n)
+	{
+		int32 Best = INDEX_NONE;
+		float BestScore = -1.f;
+		for (int32 i = 0; i < Spots.Num(); i += 3)
+		{
+			if (Steps[i] < 16) { continue; }
+			float Nearest = TNumericLimits<float>::Max();
+			for (const FVector& T : Taken) { Nearest = FMath::Min(Nearest, FVector::Dist(Spots[i], T)); }
+			const float Score = Nearest * FMath::FRandRange(0.8f, 1.f);
+			if (Score > BestScore) { BestScore = Score; Best = i; }
+		}
+		if (Best == INDEX_NONE) { break; }
+		FuseSpots.Add(Spots[Best]);
+		Taken.Add(Spots[Best]);
+	}
+	// Weapons: somewhere on the way in.
+	const EHGItem Items[] = { EHGItem::Pistol, EHGItem::Shotgun, EHGItem::Chicken, EHGItem::Grenade };
+	for (const EHGItem Item : Items)
+	{
+		for (int32 Try = 0; Try < 200 && Spots.Num() > 1; ++Try)
+		{
+			const int32 i = FMath::RandRange(1, Spots.Num() - 1);
+			if (Steps[i] >= 8 && Steps[i] <= 90)
+			{
+				ItemSpots.Emplace(Spots[i], Item);
+				break;
+			}
+		}
+	}
+
+	// The exit is the way you came in. Its lamp turns green once the fuses are in.
+	ExitLamp = NewObject<UPointLightComponent>(this);
+	ExitLamp->SetMobility(EComponentMobility::Movable);
+	ExitLamp->SetupAttachment(Root);
+	ExitLamp->SetWorldLocation(ExitSpot + FVector(0, 0, 210));
+	ExitLamp->SetIntensityUnits(ELightUnits::Unitless);
+	ExitLamp->SetAttenuationRadius(700.f);
+	ExitLamp->SetCastShadows(false);
+	ExitLamp->RegisterComponent();
+	AddInstanceComponent(ExitLamp);
+	SetExitOpen(false);
+
+	UE_LOG(LogHG, Log, TEXT("HGTEST WORLD spots=%d reachable=%d fuses=%d items=%d farthest=%d steps"), Spots.Num(), Queue.Num(), FuseSpots.Num(), ItemSpots.Num(), Steps[Farthest]);
+}
+
+int32 AHGLevel::NearestSpot(const FVector& At) const
+{
+	const FIntPoint Cell(FMath::RoundToInt32(At.X / WalkStep), FMath::RoundToInt32(At.Y / WalkStep));
+	int32 Best = INDEX_NONE;
+	float BestScore = TNumericLimits<float>::Max();
+	for (int32 Ring = 0; Ring <= 8 && Best == INDEX_NONE; ++Ring)
+	{
+		for (int32 dx = -Ring; dx <= Ring; ++dx)
+		{
+			for (int32 dy = -Ring; dy <= Ring; ++dy)
+			{
+				if (FMath::Max(FMath::Abs(dx), FMath::Abs(dy)) != Ring) { continue; }
+				if (const TArray<int32>* Here = Columns.Find(Cell + FIntPoint(dx, dy)))
+				{
+					for (const int32 i : *Here)
+					{
+						// Being on the right storey matters more than being close on the plan.
+						const float Score = FVector::Dist2D(Spots[i], At) + FMath::Abs(Spots[i].Z - At.Z) * 3.f;
+						if (Score < BestScore) { BestScore = Score; Best = i; }
+					}
+				}
+			}
+		}
+	}
+	return Best;
+}
+
+bool AHGLevel::FindWorldPath(const FVector& From, const FVector& To, TArray<FVector>& OutPath) const
+{
+	OutPath.Reset();
+	// The player's position is the middle of their body; the floor is what we walk on.
+	const int32 A = NearestSpot(From);
+	const int32 B = NearestSpot(To - FVector(0, 0, 0));
+	if (A == INDEX_NONE || B == INDEX_NONE)
+	{
+		return false;
+	}
+	TArray<int32> Parent;
+	Parent.Init(-2, Spots.Num());
+	TArray<int32> Queue;
+	Queue.Add(A);
+	Parent[A] = -1;
+	for (int32 q = 0; q < Queue.Num() && Parent[B] == -2; ++q)
+	{
+		const int32 At = Queue[q];
+		for (int32 d = 0; d < 4; ++d)
+		{
+			const int32 Next = Links[At * 4 + d];
+			if (Next != INDEX_NONE && Parent[Next] == -2)
+			{
+				Parent[Next] = At;
+				Queue.Add(Next);
+			}
+		}
+	}
+	if (Parent[B] == -2)
+	{
+		return false;
+	}
+	TArray<int32> Chain;
+	for (int32 At = B; At != A; At = Parent[At])
+	{
+		Chain.Add(At);
+	}
+	Algo::Reverse(Chain);
+
+	// Straighten the staircase of grid steps: skip ahead while a body still fits on level ground.
+	FVector Anchor = Spots[A];
+	for (int32 i = 0; i < Chain.Num(); )
+	{
+		int32 Reach = i;
+		for (int32 j = FMath::Min(i + 14, Chain.Num() - 1); j > i; --j)
+		{
+			if (FMath::Abs(Spots[Chain[j]].Z - Anchor.Z) < 12.f && BodyFits(Anchor, Spots[Chain[j]]))
+			{
+				Reach = j;
+				break;
+			}
+		}
+		Anchor = Spots[Chain[Reach]];
+		OutPath.Add(Anchor);
+		i = Reach + 1;
+	}
+	return true;
+}
+
+FVector AHGLevel::RandomSpot() const
+{
+	return Spots.Num() > 0 ? Spots[FMath::RandRange(0, Spots.Num() - 1)] : FVector::ZeroVector;
+}
+
+bool AHGLevel::FindStandableSpot(FVector& OutSpot) const
+{
+	// The middle of everything the map is built from, then outwards in rings until there is floor
+	// underfoot and room to stand.
+	FBox Bounds(ForceInit);
+	for (TActorIterator<AStaticMeshActor> It(GetWorld()); It; ++It)
+	{
+		Bounds += It->GetActorLocation();
+	}
+	if (!Bounds.IsValid)
+	{
+		return false;
+	}
+	const FVector Centre = Bounds.GetCenter();
+	const FCollisionQueryParams Params(FName(TEXT("HGStart")), false);
+	for (int32 Ring = 0; Ring <= 12; ++Ring)
+	{
+		for (int32 dx = -Ring; dx <= Ring; ++dx)
+		{
+			for (int32 dy = -Ring; dy <= Ring; ++dy)
+			{
+				if (FMath::Max(FMath::Abs(dx), FMath::Abs(dy)) != Ring) { continue; }
+				const FVector At(Centre.X + dx * 150.f, Centre.Y + dy * 150.f, Bounds.Min.Z);
+				FHitResult Hit;
+				if (!GetWorld()->LineTraceSingleByObjectType(Hit, At + FVector(0, 0, 220), At - FVector(0, 0, 150), SolidThings(), Params)
+					|| Hit.bStartPenetrating || Hit.ImpactNormal.Z < 0.7f)
+				{
+					continue;
+				}
+				// Room for a whole person, and for them to take a step in each direction.
+				const FVector Floor = Hit.ImpactPoint;
+				if (BodyFits(Floor + FVector(60, 0, 0), Floor - FVector(60, 0, 0)) && BodyFits(Floor + FVector(0, 60, 0), Floor - FVector(0, 60, 0)))
+				{
+					OutSpot = Floor;
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The ward room
+
+namespace
+{
+	/** Fresh paint: a flat colour with no grime on it. */
+	UStaticMeshComponent* Painted(AActor* Owner, USceneComponent* Parent, const TCHAR* Shape, const FVector& At, const FVector& Scale,
+		const FLinearColor& Color, bool bCollide = false, float Glow = 0.f, const FRotator& Turn = FRotator::ZeroRotator)
+	{
+		UStaticMeshComponent* Comp = HG::AddShape(Owner, Parent, Shape, At, Scale, Color, Glow, bCollide, Turn);
+		if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Comp->GetMaterial(0)))
+		{
+			Material->SetScalarParameterValue(TEXT("Clean"), 1.f);
+			Material->SetScalarParameterValue(TEXT("Roughness"), 0.6f);
+		}
+		return Comp;
+	}
+
+	UPointLightComponent* Lamp(AActor* Owner, USceneComponent* Parent, const FVector& At, const FLinearColor& Color, float Intensity, float Radius, bool bShadows)
+	{
+		UPointLightComponent* Light = NewObject<UPointLightComponent>(Owner);
+		Light->SetMobility(EComponentMobility::Movable);
+		Light->SetupAttachment(Parent);
+		Light->SetRelativeLocation(At);
+		Light->SetIntensityUnits(ELightUnits::Unitless);
+		Light->SetIntensity(Intensity);
+		Light->SetLightColor(Color);
+		Light->SetAttenuationRadius(Radius);
+		Light->SetCastShadows(bShadows);
+		Light->RegisterComponent();
+		Owner->AddInstanceComponent(Light);
+		return Light;
+	}
+}
+
+void AHGLevel::BuildWard()
+{
+	Variant = EHGVariant::Ward;
+	// The room is 5.2 m by 6.4 m and 3 m high, centred on the origin. The window is in the -X wall, the door in the +X wall.
+	const float X = 260.f, Y = 320.f, H = 300.f, T = 20.f;
+	const FLinearColor Sunny(0.95f, 0.62f, 0.08f);
+	const FLinearColor Sky(0.03f, 0.30f, 0.75f);
+	const FLinearColor White(0.85f, 0.84f, 0.80f);
+	const FLinearColor Lino(0.36f, 0.17f, 0.07f);
+
+	Painted(this, Root, TEXT("Cube"), FVector(0, 0, -10), FVector((2 * X + 40) / 100.f, (2 * Y + 40) / 100.f, 0.2f), Lino, true);
+	Painted(this, Root, TEXT("Cube"), FVector(0, 0, H + 10), FVector((2 * X + 40) / 100.f, (2 * Y + 40) / 100.f, 0.2f), White, true);
+
+	// A wall is yellow above and blue below, with a white rail between: the two-tone paint of every such ward, in happier colours.
+	auto Wall = [&](const FVector& Centre, const FVector& Size, const FVector& Inward)
+	{
+		Painted(this, Root, TEXT("Cube"), Centre, Size / 100.f, Sunny, true);
+		if (Centre.Z - Size.Z * 0.5f < 1.f)
+		{
+			const float Band = FMath::Min(Size.Z, 118.f);
+			const FVector Skin(FMath::Abs(Inward.X) > 0.5f ? 2.f : Size.X, FMath::Abs(Inward.Y) > 0.5f ? 2.f : Size.Y, Band);
+			const FVector Face = Centre + Inward * (T * 0.5f + 1.f);
+			Painted(this, Root, TEXT("Cube"), FVector(Face.X, Face.Y, Band * 0.5f), Skin / 100.f, Sky);
+			Painted(this, Root, TEXT("Cube"), FVector(Face.X, Face.Y, Band + 3.f) + Inward, FVector(Skin.X, Skin.Y, 6.f) / 100.f, White);
+		}
+	};
+	// +Y and -Y walls.
+	Wall(FVector(0, Y + T * 0.5f, H * 0.5f), FVector(2 * X + 2 * T, T, H), FVector(0, -1, 0));
+	Wall(FVector(0, -Y - T * 0.5f, H * 0.5f), FVector(2 * X + 2 * T, T, H), FVector(0, 1, 0));
+	// +X wall, with the door.
+	Wall(FVector(X + T * 0.5f, 0, H * 0.5f), FVector(T, 2 * Y, H), FVector(-1, 0, 0));
+	Painted(this, Root, TEXT("Cube"), FVector(X - 3.f, 150, 104), FVector(0.06f, 0.92f, 2.08f), White);
+	Painted(this, Root, TEXT("Cube"), FVector(X - 7.f, 150, 108), FVector(0.04f, 0.80f, 1.96f), FLinearColor(0.80f, 0.86f, 0.90f));
+	Painted(this, Root, TEXT("Sphere"), FVector(X - 12.f, 116, 100), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
+	// -X wall in four pieces around the window (1.8 m wide, from 1.0 m to 2.3 m up).
+	const float WinHalf = 90.f, WinLow = 100.f, WinHigh = 230.f;
+	Wall(FVector(-X - T * 0.5f, 0, WinLow * 0.5f), FVector(T, 2 * Y, WinLow), FVector(1, 0, 0));
+	Wall(FVector(-X - T * 0.5f, 0, (H + WinHigh) * 0.5f), FVector(T, 2 * Y, H - WinHigh), FVector(1, 0, 0));
+	Wall(FVector(-X - T * 0.5f, (Y + WinHalf) * 0.5f, (WinLow + WinHigh) * 0.5f), FVector(T, Y - WinHalf, WinHigh - WinLow), FVector(1, 0, 0));
+	Wall(FVector(-X - T * 0.5f, -(Y + WinHalf) * 0.5f, (WinLow + WinHigh) * 0.5f), FVector(T, Y - WinHalf, WinHigh - WinLow), FVector(1, 0, 0));
+	// Window frame, a cross bar, a sill, and the day outside.
+	Painted(this, Root, TEXT("Cube"), FVector(-X - 10, 0, WinLow - 3), FVector(0.34f, 1.92f, 0.06f), White);
+	Painted(this, Root, TEXT("Cube"), FVector(-X - 10, 0, (WinLow + WinHigh) * 0.5f), FVector(0.05f, 0.05f, 1.3f), White);
+	Painted(this, Root, TEXT("Cube"), FVector(-X - 10, 0, WinHigh - 40), FVector(0.05f, 1.8f, 0.05f), White);
+	Painted(this, Root, TEXT("Cube"), FVector(-X - 220, 0, 200), FVector(0.1f, 12.f, 8.f), FLinearColor(0.55f, 0.78f, 1.f), false, 14.f);
+
+	// Painted on the far wall: a sun with rays. On the near wall: balloons on strings. Clouds on both.
+	const float SunY = Y - 1.5f;
+	Painted(this, Root, TEXT("Cylinder"), FVector(-70, SunY, 215), FVector(0.9f, 0.9f, 0.02f), FLinearColor(1.f, 0.45f, 0.05f), false, 0.f, FRotator(0, 0, 90));
+	for (int32 i = 0; i < 10; ++i)
+	{
+		const float Angle = 36.f * i;
+		const FVector Out(FMath::Cos(FMath::DegreesToRadians(Angle)), 0.f, FMath::Sin(FMath::DegreesToRadians(Angle)));
+		Painted(this, Root, TEXT("Cube"), FVector(-70, SunY, 215) + Out * 68.f, FVector(0.26f, 0.015f, 0.06f), FLinearColor(1.f, 0.45f, 0.05f), false, 0.f, FRotator(Angle, 0, 0));
+	}
+	const FLinearColor Balloons[] = { FLinearColor(0.9f, 0.1f, 0.12f), FLinearColor(0.15f, 0.7f, 0.25f), FLinearColor(0.55f, 0.2f, 0.8f), FLinearColor(1.f, 0.45f, 0.75f) };
+	for (int32 i = 0; i < 4; ++i)
+	{
+		const FVector At(-150.f + 95.f * i, -Y + 2.f, 205.f + 22.f * (i % 2));
+		Painted(this, Root, TEXT("Sphere"), At, FVector(0.42f, 0.03f, 0.52f), Balloons[i]);
+		Painted(this, Root, TEXT("Cube"), At - FVector(0, 0, 62), FVector(0.012f, 0.012f, 0.7f), FLinearColor(0.25f, 0.25f, 0.25f));
+	}
+	for (const FVector& At : { FVector(120, Y - 2.f, 240), FVector(170, Y - 2.f, 228), FVector(-200, -Y + 2.f, 255), FVector(60, -Y + 2.f, 262) })
+	{
+		Painted(this, Root, TEXT("Sphere"), At, FVector(0.7f, 0.03f, 0.3f), White);
+		Painted(this, Root, TEXT("Sphere"), At + FVector(34, 0, -8), FVector(0.5f, 0.03f, 0.24f), White);
+	}
+	// Paper flags on a string across the room.
+	const FLinearColor Flags[] = { FLinearColor(0.9f, 0.1f, 0.12f), FLinearColor(1.f, 0.8f, 0.1f), FLinearColor(0.15f, 0.7f, 0.25f), FLinearColor(0.16f, 0.5f, 0.86f), FLinearColor(1.f, 0.45f, 0.05f) };
+	for (int32 i = 0; i < 15; ++i)
+	{
+		const float Along = -Y + 20.f + (2 * Y - 40.f) * i / 14.f;
+		const float Sag = 26.f * (1.f - FMath::Square((i - 7) / 7.f));
+		Painted(this, Root, TEXT("Cone"), FVector(-40, Along, 262.f - Sag), FVector(0.24f, 0.02f, 0.28f), Flags[i % UE_ARRAY_COUNT(Flags)], false, 0.f, FRotator(180, 0, 0));
+	}
+	Painted(this, Root, TEXT("Cube"), FVector(-40, 0, 282), FVector(0.01f, 2 * Y / 100.f, 0.01f), White);
+
+	// A round rug where the toys are.
+	Painted(this, Root, TEXT("Cylinder"), FVector(60, -70, 0.6f), FVector(3.0f, 3.0f, 0.012f), FLinearColor(0.78f, 0.12f, 0.12f));
+	Painted(this, Root, TEXT("Cylinder"), FVector(60, -70, 1.0f), FVector(2.3f, 2.3f, 0.012f), FLinearColor(0.96f, 0.82f, 0.4f));
+	Painted(this, Root, TEXT("Cylinder"), FVector(60, -70, 1.4f), FVector(1.5f, 1.5f, 0.012f), FLinearColor(0.16f, 0.5f, 0.86f));
+
+	// Daylight: a hard sun through the window that lands on the floor, soft sky fill at the window, and the ceiling lamp.
+	USpotLightComponent* Sun = NewObject<USpotLightComponent>(this);
+	Sun->SetMobility(EComponentMobility::Movable);
+	Sun->SetupAttachment(Root);
+	Sun->SetRelativeLocation(FVector(-X - 330, -60, 420));
+	Sun->SetRelativeRotation((FVector(40, -40, 0) - FVector(-X - 330, -60, 420)).Rotation());
+	Sun->SetIntensityUnits(ELightUnits::Unitless);
+	Sun->SetIntensity(200000.f);
+	Sun->SetLightColor(FLinearColor(1.f, 0.93f, 0.78f));
+	Sun->SetAttenuationRadius(1600.f);
+	Sun->SetInnerConeAngle(16.f);
+	Sun->SetOuterConeAngle(24.f);
+	Sun->SetCastShadows(true);
+	Sun->RegisterComponent();
+	AddInstanceComponent(Sun);
+	Lamp(this, Root, FVector(-X + 40, 0, 190), FLinearColor(0.7f, 0.85f, 1.f), 3500.f, 900.f, false);
+	Lamp(this, Root, FVector(40, 0, H - 30), FLinearColor(1.f, 0.95f, 0.85f), 4500.f, 1000.f, true);
+	Painted(this, Root, TEXT("Sphere"), FVector(40, 0, H - 14), FVector(0.4f, 0.4f, 0.2f), FLinearColor(1.f, 0.97f, 0.9f), false, 6.f);
 }

@@ -74,7 +74,17 @@ lib.connect_material_expressions(blotches, "", dirt, "A")
 lib.connect_material_expressions(speckle, "", dirt, "B")
 stained = lib.create_material_expression(material, unreal.MaterialExpressionMultiply, -420, -200)
 lib.connect_material_expressions(color, "", stained, "A")
-lib.connect_material_expressions(dirt, "", stained, "B")
+# Clean = 1 switches the grime off, for fresh paint in a bright room.
+clean = lib.create_material_expression(material, unreal.MaterialExpressionScalarParameter, -640, -260)
+clean.set_editor_property("parameter_name", "Clean")
+clean.set_editor_property("default_value", 0.0)
+spotless = lib.create_material_expression(material, unreal.MaterialExpressionConstant, -640, -180)
+spotless.set_editor_property("r", 1.0)
+grime_or_not = lib.create_material_expression(material, unreal.MaterialExpressionLinearInterpolate, -520, -320)
+lib.connect_material_expressions(dirt, "", grime_or_not, "A")
+lib.connect_material_expressions(spotless, "", grime_or_not, "B")
+lib.connect_material_expressions(clean, "", grime_or_not, "Alpha")
+lib.connect_material_expressions(grime_or_not, "", stained, "B")
 
 # Scanned surfaces for the building. Walls use the cube's own UVs once per face; floors repeat twice.
 textured = lib.create_material_expression(material, unreal.MaterialExpressionScalarParameter, -1300, 700)
@@ -129,7 +139,13 @@ flat = lib.create_material_expression(material, unreal.MaterialExpressionConstan
 flat.set_editor_property("constant", unreal.LinearColor(0.0, 0.0, 1.0, 1.0))
 final_colour = blend(stained, "", tinted, "", textured, -260, 700)
 final_normal = blend(flat, "", surface_normal, "", textured, -260, 1160)
-final_rough = blend(roughness, "", surface_rough, "", textured, -260, 1320)
+# Scanned roughness alone reads as wet under a flashlight. Lift it so floors are dull, not glossy.
+matte = lib.create_material_expression(material, unreal.MaterialExpressionConstant, -800, 1460)
+matte.set_editor_property("r", 0.35)
+duller = lib.create_material_expression(material, unreal.MaterialExpressionAdd, -640, 1380)
+lib.connect_material_expressions(surface_rough, "", duller, "A")
+lib.connect_material_expressions(matte, "", duller, "B")
+final_rough = blend(roughness, "", duller, "", textured, -260, 1320)
 
 lib.connect_material_property(final_colour, "", unreal.MaterialProperty.MP_BASE_COLOR)
 lib.connect_material_property(final_normal, "", unreal.MaterialProperty.MP_NORMAL)

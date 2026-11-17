@@ -1,6 +1,8 @@
 #include "HGActors.h"
 
 #include "Components/PointLightComponent.h"
+#include "Components/SphereComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Components/StaticMeshComponent.h"
 #include "HGGameMode.h"
 #include "HGLevel.h"
@@ -319,3 +321,105 @@ void AHGConfetti::Burst(const FVector& Direction)
 	Pop->SetCastShadows(false);
 	Pop->RegisterComponent();
 }
+
+// ---------------------------------------------------------------------------------------------
+// Toys and the shape sorter
+
+AHGToy::AHGToy()
+{
+	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	Root->SetMobility(EComponentMobility::Movable);
+	SetRootComponent(Root);
+}
+
+void AHGToy::AddGrip(const FVector& Centre, float Radius)
+{
+	USphereComponent* Grip = NewObject<USphereComponent>(this);
+	Grip->SetMobility(EComponentMobility::Movable);
+	Grip->SetupAttachment(Root);
+	Grip->SetRelativeLocation(Centre);
+	Grip->SetSphereRadius(Radius);
+	Grip->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Grip->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Grip->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	Grip->RegisterComponent();
+	AddInstanceComponent(Grip);
+}
+
+void AHGToy::SetupModel(FName InKind, const TCHAR* ModelName)
+{
+	Kind = InKind;
+	HG::AddModel(this, Root, ModelName);
+	AddGrip(FVector(0, 0, 5), 9.f);
+}
+
+void AHGToy::SetupMesh(FName InKind, UStaticMesh* Mesh, float Scale)
+{
+	Kind = InKind;
+	if (!Mesh)
+	{
+		return;
+	}
+	UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(this);
+	Comp->SetMobility(EComponentMobility::Movable);
+	Comp->SetStaticMesh(Mesh);
+	Comp->SetupAttachment(Root);
+	Comp->SetRelativeScale3D(FVector(Scale));
+	// Packs lay their toys out in a row, each far from its own origin. Stand this one on the actor's spot.
+	const FBoxSphereBounds Bounds = Mesh->GetBounds();
+	const FVector Base(Bounds.Origin.X, Bounds.Origin.Y, Bounds.Origin.Z - Bounds.BoxExtent.Z);
+	Comp->SetRelativeLocation(-Base * Scale);
+	Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Comp->RegisterComponent();
+	AddInstanceComponent(Comp);
+	AddGrip(FVector(0.f, 0.f, Bounds.BoxExtent.Z * Scale), FMath::Clamp(Bounds.SphereRadius * Scale * 0.8f, 8.f, 40.f));
+}
+
+AHGSorter::AHGSorter()
+{
+	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	Root->SetMobility(EComponentMobility::Movable);
+	SetRootComponent(Root);
+}
+
+void AHGSorter::Setup()
+{
+	HG::AddModel(this, Root, TEXT("Toy_Sorter"));
+	USphereComponent* Grip = NewObject<USphereComponent>(this);
+	Grip->SetMobility(EComponentMobility::Movable);
+	Grip->SetupAttachment(Root);
+	Grip->SetRelativeLocation(FVector(0, 0, 12));
+	Grip->SetSphereRadius(20.f);
+	Grip->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Grip->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Grip->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	Grip->RegisterComponent();
+	AddInstanceComponent(Grip);
+}
+
+bool AHGSorter::Accept(AHGToy* Toy)
+{
+	// The holes sit 9 cm apart in this order, as modelled in Scripts/make_models.py.
+	static const FName Shapes[] = { FName(TEXT("circle")), FName(TEXT("square")), FName(TEXT("triangle")) };
+	if (!Toy || Toy->bPlaced)
+	{
+		return false;
+	}
+	for (int32 i = 0; i < UE_ARRAY_COUNT(Shapes); ++i)
+	{
+		if (Toy->Kind == Shapes[i])
+		{
+			Toy->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+			Toy->AttachToComponent(Root, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+			// Sunk most of the way in, so it reads as posted through the hole.
+			Toy->SetActorRelativeLocation(FVector(-9.f + 9.f * i, 0.f, 16.f));
+			Toy->SetActorRelativeRotation(FRotator::ZeroRotator);
+			Toy->bPlaced = true;
+			++Filled;
+			HG::PlayAt(this, TEXT("pickup"), GetActorLocation(), 0.9f, 0.9f + 0.15f * Filled);
+			return true;
+		}
+	}
+	return false;
+}
+

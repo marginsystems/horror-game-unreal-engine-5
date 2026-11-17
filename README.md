@@ -9,8 +9,15 @@ It is the author's own memory, and it was not unusual: children of that time and
 operations awake, held on an adult's lap. [The story](docs/STORY.md) tells what happened, what
 the game does with it, and what medical sources say about why it was done that way.
 
-The game is being rebuilt around that story now. What is playable today is the prototype
-below: an earlier, sillier game about broken weapons that the story replaces.
+The game is being rebuilt around that story now. The first scene, the ward, can be played:
+a bright children's room at a five-year-old's eye height, toys to pick up, and a shape sorter.
+
+```bash
+Scripts/play.sh
+```
+
+Everything below is the prototype: an earlier, sillier game about broken weapons that the
+story replaces. `Scripts/play.sh clinic`, `office`, `mine` and `hospital` still run it.
 
 ## The prototype
 

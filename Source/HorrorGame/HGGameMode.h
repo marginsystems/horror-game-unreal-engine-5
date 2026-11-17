@@ -9,6 +9,8 @@
 class AHGLevel;
 class AHGMonster;
 class AHGPlayer;
+class AHGSorter;
+class AHGToy;
 class USoundBase;
 class UStaticMesh;
 
@@ -41,6 +43,9 @@ public:
 	void Travel(EHGVariant To);
 
 	bool IsOver() const { return bOver; }
+	/** True while the engine is still preparing shaders, textures or meshes. The round waits for it. */
+	bool IsLoading() const { return LoadingLeft > 0; }
+	int32 LoadingLeft = 0;
 	bool HasWon() const { return bWon; }
 	EHGVariant GetVariant() const { return Variant; }
 	AHGLevel* GetLevel() const { return Level; }
@@ -56,9 +61,15 @@ public:
 
 private:
 	void Win();
+	/** Fills a ready-made map (the hospital) with the round: fuses, weapons and the monster. */
+	void PopulateWorldMap();
+	/** Scene one of the story: lays out the toys in the ward and walks the player through playing with them. */
+	void PopulateWard();
+	void TickWard(float Dt, AHGPlayer* Player);
 	void TickBot(float Dt, AHGPlayer* Player);
 	void TickCatchBot(float Dt, AHGPlayer* Player);
 	void TickShots(float Dt, AHGPlayer* Player);
+	void TickWorldShots(float Dt, AHGPlayer* Player);
 	void Finish(int32 ExitCode);
 
 	UPROPERTY()
@@ -69,6 +80,17 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<AActor> StartSpot;
+
+	UPROPERTY()
+	TObjectPtr<AHGSorter> WardSorter;
+
+	/** The toy mom asks for once the shapes are in. Null when the toy pack is not installed. */
+	UPROPERTY()
+	TObjectPtr<AHGToy> WardRabbit;
+
+	int32 WardStep = 0;
+	float WardTimer = 0.f;
+	FVector MomSpot = FVector(40, 170, 0);
 
 	/** Held here so the sounds and models stay loaded for the whole round. */
 	UPROPERTY()

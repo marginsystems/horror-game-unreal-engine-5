@@ -83,3 +83,50 @@ private:
 	UPROPERTY()
 	TObjectPtr<USceneComponent> Root;
 };
+
+/** Something a small child can pick up and carry: a toy, or one of the sorter's three shapes. */
+UCLASS()
+class AHGToy : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	AHGToy();
+
+	/** Shows one of the game's own models (see HG::ModelNames). */
+	void SetupModel(FName InKind, const TCHAR* ModelName);
+	/** Shows any static mesh, for toys that come from an asset pack. */
+	void SetupMesh(FName InKind, UStaticMesh* Mesh, float Scale);
+
+	FName Kind;
+	/** True once it sits in the sorter. It stays there. */
+	bool bPlaced = false;
+
+private:
+	/** An invisible ball around the toy, so looking at it finds it. */
+	void AddGrip(const FVector& Centre, float Radius);
+
+	UPROPERTY()
+	TObjectPtr<USceneComponent> Root;
+};
+
+/** The shape sorter: a wooden box that takes the circle, the square and the triangle. */
+UCLASS()
+class AHGSorter : public AActor
+{
+	GENERATED_BODY()
+
+public:
+	AHGSorter();
+
+	void Setup();
+	/** Puts the toy in its hole if it is one of the three shapes. False for anything else. */
+	bool Accept(AHGToy* Toy);
+
+	int32 Filled = 0;
+
+private:
+	UPROPERTY()
+	TObjectPtr<USceneComponent> Root;
+};
+
