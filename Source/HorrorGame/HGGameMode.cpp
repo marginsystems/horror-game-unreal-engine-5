@@ -1,10 +1,12 @@
 #include "HGGameMode.h"
 
+#include "Animation/AnimSequence.h"
 #include "Camera/CameraActor.h"
 #include "CanvasItem.h"
 #include "CanvasTypes.h"
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -309,95 +311,78 @@ void AHGGameMode::PopulateWard()
 		}
 	}
 
-	// Mom, standing by the bed, watching him play. Neither woman we have is good enough to show yet
-	// (one pokes through her clothes, the other does not take the animations), so she is only put in
-	// the room when asked for: -Mom=quat or -Mom=real. Without her, the rabbit task is skipped.
-	// Her voice is in the room either way, from where she would be standing.
-	FString WhichMom;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("Mom="), WhichMom))
+	// Mom, standing by the bed, watching him play. She is a MetaHuman kept in the private plugin
+	// (docs/METAHUMAN.md). Without the plugin her voice is still in the room, from where she would stand.
+	UClass* MomClass = LoadClass<AActor>(nullptr, TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!MomClass)
 	{
 		return;
 	}
-	AActor* Mom = World->SpawnActor<AActor>(MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation(), Always);
-	USceneComponent* MomRoot = NewObject<USceneComponent>(Mom);
-	MomRoot->SetMobility(EComponentMobility::Movable);
-	Mom->SetRootComponent(MomRoot);
-	MomRoot->RegisterComponent();
-	Mom->SetActorLocationAndRotation(MomSpot, FRotator(0.f, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, 0.f));
-	TArray<FString> Parts;
-	for (const TCHAR* Part : { TEXT("Arms"), TEXT("Body"), TEXT("Feet"), TEXT("Legs") })
+	const float Facing = (FVector(60, -70, 0) - MomSpot).Rotation().Yaw + MomYawOffset;
+	WardMom = World->SpawnActor<AActor>(MomClass, MomSpot, FRotator(0.f, Facing, 0.f), Always);
+	if (!WardMom)
 	{
-		Parts.Add(FString::Printf(TEXT("/HorrorPrivate/Characters/Mom/Female_Peasant/SkeletalMeshes/Female_Peasant_%s.Female_Peasant_%s"), Part, Part));
+		return;
 	}
-	for (const TCHAR* Part : { TEXT("Superhero_Female"), TEXT("Eyes"), TEXT("Eyebrows") })
+	// Her own collision is a ragdoll's worth of small bodies; one plain capsule is what he bumps into.
+	TArray<UPrimitiveComponent*> Pieces;
+	WardMom->GetComponents(Pieces);
+	for (UPrimitiveComponent* Piece : Pieces)
 	{
-		Parts.Add(FString::Printf(TEXT("/HorrorPrivate/Characters/Woman/Superhero_Female_FullBody/SkeletalMeshes/%s.%s"), Part, Part));
+		Piece->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
-	// -Mom=real tries the realistic woman from Fab instead, to compare the two.
-	FString MomKind;
-	FParse::Value(FCommandLine::Get(), TEXT("Mom="), MomKind);
-	const bool bRealMom = MomKind == TEXT("real");
-	if (bRealMom)
+	UCapsuleComponent* Block = NewObject<UCapsuleComponent>(WardMom);
+	Block->InitCapsuleSize(24.f, 84.f);
+	Block->SetupAttachment(WardMom->GetRootComponent());
+	Block->SetRelativeLocation(FVector(0, 0, 84));
+	Block->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Block->SetCollisionResponseToAllChannels(ECR_Block);
+	Block->RegisterComponent();
+	WardMom->AddInstanceComponent(Block);
+
+	// The body takes Epic's mannequin clips as they are; the face, hair and clothes follow the body.
+	TArray<USkeletalMeshComponent*> Meshes;
+	WardMom->GetComponents(Meshes);
+	for (USkeletalMeshComponent* Mesh : Meshes)
 	{
-		Parts.Reset();
-		Parts.Add(TEXT("/HorrorPrivate/Characters/MomReal/army_girl.army_girl"));
-	}
-	if (USkeletalMeshComponent* Rig = HG::AddPerson(Mom, MomRoot, Parts, bRealMom ? 0.9f : 1.f))
-	{
-		HG::PlayPersonClip(Rig, TEXT("Idle_Loop"));
-		// Fair skin: the pack's body ships with its dark skin as the default.
-		if (UTexture* Fair = LoadObject<UTexture>(nullptr, TEXT("/HorrorPrivate/Characters/Woman/Skins/T_Superhero_Female_Light_BaseColor.T_Superhero_Female_Light_BaseColor"), nullptr, LOAD_NoWarn | LOAD_Quiet))
+		if (Mesh->GetName() != TEXT("Body"))
 		{
-			TArray<USkeletalMeshComponent*> Skins;
-			Mom->GetComponents(Skins);
-			for (USkeletalMeshComponent* Skin : Skins)
-			{
-				if (Skin->GetSkeletalMeshAsset() && Skin->GetSkeletalMeshAsset()->GetName() == TEXT("Superhero_Female"))
-				{
-					for (int32 i = 0; i < Skin->GetNumMaterials(); ++i)
-					{
-						if (UMaterialInstanceDynamic* Material = Skin->CreateDynamicMaterialInstance(i))
-						{
-							Material->SetTextureParameterValue(TEXT("BaseColorTexture"), Fair);
-						}
-					}
-				}
-			}
+			continue;
 		}
-		// Her hair: straight, past the shoulders, blonde. The pack's hair is a loose mesh in the body's
-		// own space, so it is hung on the head bone at the inverse of that bone's rest position.
-		UStaticMesh* HairMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/HorrorPrivate/Characters/MomHair/Hair_Long/StaticMeshes/Hair_Long.Hair_Long"), nullptr, LOAD_NoWarn | LOAD_Quiet);
-		const FReferenceSkeleton& Skeleton = Rig->GetSkeletalMeshAsset()->GetRefSkeleton();
-		FName HeadBone = NAME_None;
-		for (const TCHAR* Name : { TEXT("Head"), TEXT("head") })
+		for (const TCHAR* ClipPath : {
+			TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"),
+			TEXT("/MetaHumanCharacter/Optional/Animation/UEFNAnimPreset/Locomotion/AS_MH_Neutral_Stand_Idle_Loop.AS_MH_Neutral_Stand_Idle_Loop") })
 		{
-			if (Skeleton.FindBoneIndex(FName(Name)) != INDEX_NONE) { HeadBone = FName(Name); }
-		}
-		if (HairMesh && !HeadBone.IsNone() && !bRealMom)
-		{
-			FTransform HeadRest = FTransform::Identity;
-			for (int32 Bone = Skeleton.FindBoneIndex(HeadBone); Bone != INDEX_NONE; Bone = Skeleton.GetParentIndex(Bone))
+			if (UAnimSequence* Clip = LoadObject<UAnimSequence>(nullptr, ClipPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
 			{
-				HeadRest = HeadRest * Skeleton.GetRefBonePose()[Bone];
-			}
-			UStaticMeshComponent* Hair = NewObject<UStaticMeshComponent>(Mom);
-			Hair->SetMobility(EComponentMobility::Movable);
-			Hair->SetStaticMesh(HairMesh);
-			Hair->SetupAttachment(Rig, HeadBone);
-			Hair->SetRelativeTransform(HeadRest.Inverse());
-			Hair->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			Hair->RegisterComponent();
-			Mom->AddInstanceComponent(Hair);
-			if (UMaterialInstanceDynamic* Blonde = Hair->CreateDynamicMaterialInstance(0))
-			{
-				if (UTexture* Plain = LoadObject<UTexture>(nullptr, TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture")))
-				{
-					Blonde->SetTextureParameterValue(TEXT("BaseColorTexture"), Plain);
-				}
-				Blonde->SetVectorParameterValue(TEXT("BaseColorFactor"), FLinearColor(0.80f, 0.60f, 0.28f));
+				Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+				Mesh->PlayAnimation(Clip, true);
+				UE_LOG(LogHG, Log, TEXT("HGTEST MOM clip=%s"), *Clip->GetName());
+				break;
 			}
 		}
 	}
+	UE_LOG(LogHG, Log, TEXT("HGTEST MOM spawned parts=%d"), Pieces.Num());
+}
+
+void AHGGameMode::TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen)
+{
+	if (!WardMom)
+	{
+		return;
+	}
+	// She watches him play, and now and then the door. More often as ten gets close; once it opens, only the door.
+	MomNextGlance -= Dt;
+	if (MomNextGlance <= 0.f)
+	{
+		MomGlance = 2.6f;
+		MomNextGlance = SecondsToTen < 60.f ? FMath::FRandRange(5.f, 8.f) : FMath::FRandRange(12.f, 18.f);
+	}
+	MomGlance = FMath::Max(0.f, MomGlance - Dt);
+	const FVector Door(280, 150, 0);
+	const FVector Target = (MomGlance > 0.f || WardStep == 10) ? Door : (Player ? Player->GetActorLocation() : FVector(60, -70, 0));
+	const FRotator Want(0.f, (Target - MomSpot).Rotation().Yaw + MomYawOffset, 0.f);
+	WardMom->SetActorRotation(FMath::RInterpTo(WardMom->GetActorRotation(), Want, Dt, 2.2f));
 }
 
 void AHGGameMode::BeginCutscene(AHGPlayer* Player)
@@ -465,6 +450,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	const float ClockRate = bBot ? 16.f : 2.f;
 	const float SecondsToTen = 240.f - RoundSeconds * ClockRate;
 	Level->SetClock(10.f - FMath::Max(SecondsToTen, 0.f) / 3600.f);
+	TickMom(Dt, Player, SecondsToTen);
 	TickBank += Dt;
 	if (TickBank >= 1.f && WardStep < 10 && !bRealClock)
 	{
@@ -785,7 +771,22 @@ void AHGGameMode::Tick(float DeltaSeconds)
 				++ShotStep;
 				ShotTimer = 0.f;
 			}
-			else if (ShotStep == 3 && ShotTimer > 0.5f)
+			else if (ShotStep == 3 && WardMom && MomShot == 0 && ShotTimer > 0.5f)
+			{
+				// Mom, from where he looks up at her.
+				Player->SetActorLocation(MomSpot + FVector(95, -95, 60));
+				Player->LookAt(MomSpot + FVector(0, 0, 138));
+				MomShot = 1;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 3 && MomShot == 1 && ShotTimer > 2.5f)
+			{
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-3-mom.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-3-mom"));
+				MomShot = 2;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 3 && (!WardMom || MomShot == 2) && ShotTimer > 0.5f)
 			{
 				// The door wall, with the clock, then jump the clock to a few seconds before ten.
 				Player->SetActorLocation(FVector(-60, -40, 60));
@@ -1225,7 +1226,7 @@ void AHGHUD::DrawHUD()
 			const float T = Game->CineElapsed();
 			const float Alpha = FMath::Clamp(FMath::Min(T - 0.6f, 4.2f - T), 0.f, 1.f);
 			Centered(TEXT("RUSSIA, 1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha), FaceLight);
-			Centered(TEXT("Based on a true story."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
+			Centered(TEXT("Inspired in part by a true story."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
 			return;
 		}
 		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.55f), W * 0.5f - 1.5f, H * 0.5f - 1.5f, 3.f, 3.f);

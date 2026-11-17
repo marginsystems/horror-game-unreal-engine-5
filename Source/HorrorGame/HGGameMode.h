@@ -114,6 +114,18 @@ private:
 
 	void TickWardBot(float Dt, AHGPlayer* Player);
 
+	/** Mom, when the private plugin has her. */
+	UPROPERTY()
+	TObjectPtr<AActor> WardMom;
+
+	void TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen);
+
+	/** The MetaHuman body faces along its own +Y, so "facing a point" needs a quarter turn taken off. */
+	float MomYawOffset = -90.f;
+	float MomGlance = 0.f;
+	float MomNextGlance = 9.f;
+	int32 MomShot = 0;
+
 	/** Frames drawn and real seconds passed since loading finished, for the frame-rate line in the log. */
 	int32 FramesSeen = 0;
 	double SecondsSeen = 0.0;
