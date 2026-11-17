@@ -131,5 +131,7 @@ to the second.
 1. The ward room and the shape sorter, at child height. (Built.)
 2. The handover and the corridor, one unbroken carried walk. (Built.)
 3. The chair, done with cloth, sound and colour only. (Built.)
-4. The escape in the hospital map: crawling, hiding, doctors that search.
-5. Mom, the ending, and the closing text.
+4. The escape: crawling, hiding, doctors that search. (Built, in its own small set of rooms: a
+   side room, a long ward of beds, a corridor with a nurses' counter. Hiding in cupboards, crying,
+   and wriggling free are not in yet; being caught carries him back to where he last got to.)
+5. Mom, the ending, and the closing text. (Built.)
