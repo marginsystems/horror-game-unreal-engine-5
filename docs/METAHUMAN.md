@@ -1,12 +1,13 @@
 # MetaHuman characters through the editor's MCP server
 
-Written 2026-11-17 while making "Mom". State at the end of the run:
+Written 2026-11-17 while making "Mom". State now:
 
-- **Done:** the MetaHuman character asset `/HorrorPrivate/MetaHumans/Mom/Mom` exists and is saved
-  (fair skin, blue eyes, long straight blonde hair, T-shirt and shorts). Picture of her live
-  preview: `Saved/Generated/mom-metahuman.png`.
-- **Not done:** assembly into game assets (skeletal meshes, Blueprint). It needs an Epic sign-in
-  in the editor, which only a person can do. See "What is left".
+- **Done:** the mother is a MetaHuman: character asset `/HorrorPrivate/MetaHumans/Mom/Mom`, rigged
+  and assembled into `/HorrorPrivate/MetaHumans/Mom/BP_Mom` (body, face, hair, clothes; 475 MB
+  with the shared `Common` folder). The ward spawns `BP_Mom`, plays the mannequin idle on her
+  `Body` and turns her towards the child and, now and then, the door.
+- **Not done:** 1990s clothes and shoes (Epic ships one outfit), a softer face, longer hair, a
+  head-only glance instead of a whole-body turn, and the same for the doctors.
 
 Helper used below: `Scripts/mcp.py call call_tool '{"toolset_name":..., "tool_name":..., "arguments":{...}}' 20000`.
 Toolset names: `E` = `metahuman_toolset.metahuman.MetaHumanToolset` (Epic's),
@@ -127,20 +128,31 @@ Hair items are in `/MetaHumanCharacter/Optional/Grooms/Bindings/Hair/` (`WI_Hair
 - **Hair length.** `WI_Hair_L_Straight` reaches the shoulders, not clearly past them. The other
   long straight one is `WI_Hair_L_StraightBangs` (not tried).
 
-## What is left (not run)
+## Sign-in, rig, textures, assembly (run 2026-11-17, worked)
 
 `C` = `/HorrorPrivate/MetaHumans/Mom/Mom.Mom`.
 
 1. `E.begin_edit {"object_path":C}`, then
-   `H.auto_rig {"character_path":C,"with_blend_shapes":false,"blocking":false}`.
-   Epic's UI text says the sign-in starts here ("No user signed in, please autorig to trigger
-   log-in flow"): the browser should open the Epic account page and a person has to sign in.
-   With `blocking` true the editor freezes until that is done.
-2. Poll `H.can_assemble` after `H.download_textures {"character_path":C}`; both cloud steps
-   must have finished (Epic's `test_character_assembly.py` shows the same order).
-3. `H.assemble {"character_path":C,"build_path":"/HorrorPrivate/MetaHumans","common_path":"/HorrorPrivate/MetaHumans/Common","quality":"High"}`.
-   Whether assembly accepts a plugin folder instead of `/Game` is untested. If it writes to
-   `/Game/MetaHumans`, that folder is already in `.gitignore` (`Content/MetaHumans/`).
-4. `E.end_edit`, `AssetTools.save_assets` for everything under the build folder, `du -sh` it.
-5. Place the assembled Blueprint (`SceneTools.add_to_scene_from_asset`), light it, take the
-   picture again, and play `MM_Idle` and `MF_Unarmed_Walk_Fwd` on its `Body` component.
+   `H.auto_rig {"character_path":C,"with_blend_shapes":false,"blocking":false}`. With nobody
+   signed in, the editor opens an Epic page in the default browser (a device code, valid ten
+   minutes) and a person has to confirm it there. The page can end on "Invalid Client: Redirect
+   URL is not known to the client" and the sign-in has still worked; the log says
+   `LogEOSAuth: ... Login complete: EOS_Success`. The token is kept, so later runs do not ask.
+   If the code expires (`EOS_Auth_PinGrantExpired`), call `auto_rig` again.
+2. After the sign-in the rig starts by itself: `Auto-Rigging finished in 24 seconds`.
+3. `H.download_textures {"character_path":C}` returned true in under a minute.
+4. `H.can_assemble` true, then
+   `H.assemble {"character_path":C,"build_path":"/HorrorPrivate/MetaHumans","common_path":"/HorrorPrivate/MetaHumans/Common","quality":"High"}`.
+   A plugin folder is accepted. The call comes back as an error listing "Cannot break link" in
+   two face Control Rig graphs, yet the log says `MetaHuman Character assembly succeeded` and
+   the assets are there. About 50 seconds.
+5. Nothing is on disk yet: `AssetTools.find_assets {"folder_path":"/HorrorPrivate/MetaHumans","name":""}`
+   (182 assets), then `AssetTools.save_assets` in batches. `E.end_edit`, save the character again.
+   The character asset grows from 9 MB to 121 MB (textures and rig inside it).
+6. The editor then asks for three renderer settings for the face mesh; they are in
+   `Config/DefaultEngine.ini` now (`r.GPUSkin.Support16BitBoneIndex`,
+   `r.GPUSkin.UnlimitedBoneInfluences`, `r.SkinCache.CompileShaders`).
+7. In the game: `LoadClass<AActor>(nullptr, TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"))`,
+   spawn it, find the skeletal mesh component named `Body`, `PlayAnimation`. The body faces
+   along the actor's +Y, so take 90 degrees off the yaw to face a point.
+   See `AHGGameMode::PopulateWard` and `TickMom`.

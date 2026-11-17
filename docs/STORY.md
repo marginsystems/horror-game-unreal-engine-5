@@ -1,6 +1,7 @@
 # The story
 
-This game is based on a true story. It is the author's own memory.
+This game is inspired in part by a true story. The opening, up to the operation, is the author's
+own memory. Everything after it, the escape through the hospital, is invented.
 
 ## What happened
 
@@ -102,7 +103,7 @@ Decided: the game is aimed at players of 16 and over.
   the corridor.
 - **The cutting is never shown.** No instruments in a child's mouth, no wounds on a child's
   body. His eyes were covered; the player sees what he saw.
-- **A warning at the start** says what the game is: based on a true story, a child's
+- **A warning at the start** says what the game is: inspired in part by a true story, a child's
   medical procedure, blood and distress.
 - **A "less blood" setting** for players who want the story without the red.
 
