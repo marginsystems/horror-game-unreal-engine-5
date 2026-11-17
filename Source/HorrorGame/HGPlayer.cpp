@@ -357,7 +357,12 @@ void AHGPlayer::Interact()
 			Toy->SetActorRelativeLocation(FVector(0.f, 0.f, -6.f));
 			Held = Toy;
 			UseKick = 0.4f;
-			HG::Play(this, TEXT("pickup"), 0.5f, 1.25f);
+			// A plush toy squeaks; everything else is wood on a hard floor.
+			const bool bSoft = Toy->Kind == FName(TEXT("rabbit"));
+			if (!HG::Extra(this, bSoft ? TEXT("squeak") : (FMath::RandBool() ? TEXT("wood_1") : TEXT("wood_2")), Toy->GetActorLocation(), 0.8f, FMath::FRandRange(0.94f, 1.08f)))
+			{
+				HG::Play(this, TEXT("pickup"), 0.5f, 1.25f);
+			}
 		}
 		return;
 	}
@@ -386,7 +391,10 @@ void AHGPlayer::Interact()
 	Held->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	Held->SetActorLocationAndRotation(Spot, FRotator(0.f, FMath::FRandRange(0.f, 360.f), 0.f));
 	Held = nullptr;
-	HG::Play(this, TEXT("step_1"), 0.25f, 1.5f);
+	if (!HG::Extra(this, TEXT("wood_3"), Spot, 0.8f, FMath::FRandRange(0.92f, 1.1f)))
+	{
+		HG::Play(this, TEXT("step_1"), 0.25f, 1.5f);
+	}
 }
 
 void AHGPlayer::SmackFlashlight()

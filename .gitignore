@@ -31,3 +31,11 @@ Plugins/HorrorPrivate/
 
 # Fab packs the Epic launcher adds to the project. Fab Standard License: never commit them here.
 Content/Horror_Hospital/
+
+# Epic's own content (mannequin animations, MetaHuman builds). Unreal Engine licence: fine to ship
+# inside the game, not to publish as source files. The private plugin carries what the game needs.
+Content/Characters/
+Content/MetaHumans/
+
+# Python caches
+__pycache__/
