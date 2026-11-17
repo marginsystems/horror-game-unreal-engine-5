@@ -825,7 +825,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		// doctors go on changing for most of the corridor after it.
 		const float Away = FMath::Clamp((WomanAt.Y - 152.f) / 950.f, 0.f, 1.f);
 		Player->SetSaturation(FMath::Lerp(1.3f, 0.12f, FMath::SmoothStep(0.f, 1.f, Away * 1.1f)));
-		const float Wrong = FMath::SmoothStep(0.05f, 1.f, FMath::Clamp((WomanAt.Y - 152.f) / 2300.f, 0.f, 1.f));
+		const float Wrong = FMath::SmoothStep(0.05f, 1.f, FMath::Clamp(static_cast<float>(WomanAt.Y - 152.0) / 2300.f, 0.f, 1.f));
 		if (WomanAnim) { WomanAnim->SetWrong(Wrong); }
 		if (ManAnim) { ManAnim->SetWrong(Wrong); }
 		for (UHGFaceAnim* DoctorFace : DoctorFaces)
@@ -921,7 +921,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	const bool bFirst = CorridorTimer <= 0.f;
 	CorridorTimer += Dt;
 	// How far along the corridor he is, from its start to the door.
-	const float Along = FMath::Clamp((WomanAt.Y - 1340.f) / FMath::Max(Door.Y - 1340.f, 1.f), 0.f, 1.f);
+	const float Along = FMath::Clamp(static_cast<float>((WomanAt.Y - 1340.0) / FMath::Max(Door.Y - 1340.0, 1.0)), 0.f, 1.f);
 	auto Shot = [this](int32 Bit, const TCHAR* Name)
 	{
 		if (bShots && !(HandShots & (1 << Bit)))
@@ -1078,7 +1078,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	}
 
 	// Through the door the picture burns out to white, and that is where the scene ends.
-	WhiteOut = FMath::Clamp((WomanAt.X - (Door.X - 40.f)) / 200.f, 0.f, 1.f);
+	WhiteOut = FMath::Clamp(static_cast<float>(WomanAt.X - (Door.X - 40.0)) / 200.f, 0.f, 1.f);
 	if (WhiteOut >= 1.f)
 	{
 		WhiteHeld += Dt;
@@ -1086,7 +1086,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 
 	if (bShots)
 	{
-		const float Y = WomanAt.Y;
+		const float Y = static_cast<float>(WomanAt.Y);
 		const FVector Ahead(470, Y + 900.f, 170);
 		FVector Look = ManFace;
 		if (Y > 1750.f && Y < 2250.f) { Look = Ahead; }

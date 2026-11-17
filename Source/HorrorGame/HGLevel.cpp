@@ -909,9 +909,9 @@ void AHGLevel::BuildWard()
 		Drab(FVector(HallNear + 1.f, (Y + T + DoorHigh) * 0.5f, H * 0.5f), FVector(2, Y + T - DoorHigh, H), Cold, false);
 		Drab(FVector(HallNear + 1.f, (DoorLow + DoorHigh) * 0.5f, (H + DoorTop) * 0.5f), FVector(2, DoorHigh - DoorLow, H - DoorTop), Cold, false);
 		// The lamps to the right of the door are kept in order, because in scene three they go out behind him one by one.
-		auto HallLamp = [this, HallNear](float Along, float Height, float Intensity, float Radius, bool bShadows)
+		auto HallLamp = [this, HallNear](float Along, float Ceiling, float Intensity, float Radius, bool bShadows)
 		{
-			HallLamps.Add(Lamp(this, Root, FVector(HallNear + 150, Along, Height - 30), FLinearColor(0.55f, 0.72f, 1.f), Intensity, Radius, bShadows));
+			HallLamps.Add(Lamp(this, Root, FVector(HallNear + 150, Along, Ceiling - 30), FLinearColor(0.55f, 0.72f, 1.f), Intensity, Radius, bShadows));
 			HallLampY.Add(Along);
 			HallLampFull.Add(Intensity);
 		};
@@ -956,13 +956,13 @@ void AHGLevel::BuildWard()
 
 				// The room behind it: white, too bright, and one chair.
 				const float RoomNear = HallFar + T, RoomFar = HallFar + T + 420.f, RoomHalf = 230.f, RoomHigh = 330.f;
-				const FLinearColor Tile(0.92f, 0.93f, 0.95f);
-				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, -10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tile, true);
-				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, RoomHigh + 10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tile, true);
-				Painted(this, Root, TEXT("Cube"), FVector(RoomFar + T * 0.5f, Mid, RoomHigh * 0.5f), FVector(T / 100.f, RoomHalf * 0.02f, RoomHigh / 100.f), Tile, true);
+				const FLinearColor Tiled(0.92f, 0.93f, 0.95f);
+				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, -10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tiled, true);
+				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, RoomHigh + 10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tiled, true);
+				Painted(this, Root, TEXT("Cube"), FVector(RoomFar + T * 0.5f, Mid, RoomHigh * 0.5f), FVector(T / 100.f, RoomHalf * 0.02f, RoomHigh / 100.f), Tiled, true);
 				for (const float Side : { -1.f, 1.f })
 				{
-					Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid + Side * (RoomHalf + T * 0.5f), RoomHigh * 0.5f), FVector((RoomFar - RoomNear) / 100.f, T / 100.f, RoomHigh / 100.f), Tile, true);
+					Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid + Side * (RoomHalf + T * 0.5f), RoomHigh * 0.5f), FVector((RoomFar - RoomNear) / 100.f, T / 100.f, RoomHigh / 100.f), Tiled, true);
 				}
 				OpLight = Lamp(this, Root, FVector(RoomNear + 200, Mid, RoomHigh - 40), FLinearColor(0.92f, 0.97f, 1.f), 0.f, 900.f, false);
 				// The chair, facing the door, and a small table with a tray beside it.
