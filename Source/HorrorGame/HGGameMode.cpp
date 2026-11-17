@@ -383,7 +383,7 @@ void AHGGameMode::PopulateWard()
 	// The two doctors wait a long way down the hall, behind the closed door, until ten.
 	static const TCHAR* DoctorClasses[] = {
 		TEXT("/HorrorPrivate/MetaHumans/DoctorWoman/BP_DoctorWoman.BP_DoctorWoman_C"),
-		TEXT("/HorrorPrivate/MetaHumans/DoctorMan/BP_DoctorMan.BP_DoctorMan_C") };
+		TEXT("/HorrorPrivate/MetaHumans/DoctorSecond/BP_DoctorSecond.BP_DoctorSecond_C") };
 	static const FVector DoctorStarts[] = { FVector(430, 790, 0), FVector(480, 880, 0) };
 	for (int32 i = 0; i < 2; ++i)
 	{
@@ -467,7 +467,7 @@ void AHGGameMode::PopulateWard()
 	static const TCHAR* Lines[] = { TEXT("mom_shapes"), TEXT("mom_good"), TEXT("mom_rabbit"), TEXT("mom_thanks"), TEXT("mom_doctors"),
 		TEXT("doc_ready"), TEXT("mom_lift"), TEXT("doc_take"), TEXT("doc_hush"), TEXT("doc_nearly"), TEXT("doc_here"),
 		TEXT("chair_sit"), TEXT("chair_cover"), TEXT("chair_still"), TEXT("chair_hold"), TEXT("chair_shh"), TEXT("chair_done"),
-		TEXT("esc_man_where"), TEXT("esc_man_come"), TEXT("esc_man_there"), TEXT("esc_woman_time"), TEXT("esc_woman_hear"), TEXT("esc_woman_there"),
+		TEXT("esc_other_where"), TEXT("esc_other_come"), TEXT("esc_other_there"), TEXT("esc_woman_time"), TEXT("esc_woman_hear"), TEXT("esc_woman_there"),
 		TEXT("esc_caught"), TEXT("mom_where"), TEXT("mom_found") };
 	for (const TCHAR* Line : Lines)
 	{
@@ -487,7 +487,8 @@ void AHGGameMode::PopulateWard()
 	// The corridor's own sounds: her shoes, the rumble, his heart, voices behind a door, a cart, the last door.
 	static const TCHAR* CorridorSounds[] = { TEXT("step_hard_1"), TEXT("step_hard_2"), TEXT("hall_low"), TEXT("heart"), TEXT("hall_voices"), TEXT("cart"), TEXT("op_door"),
 		TEXT("tray"), TEXT("glove"), TEXT("cloth"), TEXT("instrument"), TEXT("chair_creak"), TEXT("ring"),
-		TEXT("escape_drone"), TEXT("spotted"), TEXT("caught") };
+		TEXT("escape_drone"), TEXT("spotted"), TEXT("caught"),
+		TEXT("child_cry"), TEXT("child_whimper"), TEXT("child_breath"), TEXT("lamp_die"), TEXT("radio") };
 	for (const TCHAR* Name : CorridorSounds)
 	{
 		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/X_%s.X_%s"), Name, Name);
@@ -698,9 +699,9 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		return;
 	}
 	AActor* Woman = WardDoctors[0];
-	AActor* Man = WardDoctors[1];
+	AActor* Second = WardDoctors[1];
 	UHGPersonAnim* WomanAnim = DoctorAnims[0];
-	UHGPersonAnim* ManAnim = DoctorAnims[1];
+	UHGPersonAnim* SecondAnim = DoctorAnims[1];
 	HandTimer += Dt;
 	auto Next = [this]() { ++HandStep; HandTimer = 0.f; };
 	auto Shot = [this](int32 Bit, const TCHAR* Name)
@@ -719,7 +720,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 	const FVector DoctorHold = PersonPoint(Woman, 8.f, 27.f, 148.f);
 	const FVector MomFace = PersonPoint(WardMom, 9.f, 0.f, 153.f);
 	const FVector WomanFace = PersonPoint(Woman, 9.f, 0.f, 160.f);
-	const FVector ManFace = PersonPoint(Man, 9.f, 0.f, 166.f);
+	const FVector SecondFace = PersonPoint(Second, 9.f, 0.f, 166.f);
 	const FVector WomanAt = Woman->GetActorLocation();
 
 	switch (HandStep)
@@ -837,11 +838,11 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		}
 		PersonLooks(WardMom, MomAnim, Eyes, 0.6f);
 		PersonLooks(Woman, WomanAnim, Eyes, 0.7f);
-		if (WalkPerson(Man, ManAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
+		if (WalkPerson(Second, SecondAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
 		{
-			FacePerson(Man, Eyes, Dt, 2.5f);
+			FacePerson(Second, Eyes, Dt, 2.5f);
 		}
-		PersonLooks(Man, ManAnim, Eyes, 0.6f);
+		PersonLooks(Second, SecondAnim, Eyes, 0.6f);
 		if (HandTimer > 1.5f && !bCried)
 		{
 			// He cries for her. The sound is only there once a recording of it is in the private plugin.
@@ -906,50 +907,50 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		SetWardSound(1.f - FMath::SmoothStep(0.f, 1.f, Away * 1.6f));
 		const float Wrong = FMath::SmoothStep(0.05f, 1.f, FMath::Clamp(static_cast<float>(WomanAt.Y - 152.0) / 2300.f, 0.f, 1.f));
 		if (WomanAnim) { WomanAnim->SetWrong(Wrong); }
-		if (ManAnim) { ManAnim->SetWrong(Wrong); }
+		if (SecondAnim) { SecondAnim->SetWrong(Wrong); }
 		for (UHGFaceAnim* DoctorFace : DoctorFaces)
 		{
 			if (DoctorFace) { DoctorFace->SetWrong(Wrong); }
 		}
 		// The one behind also grows: too tall for the hall by the end of it.
-		Man->SetActorScale3D(FVector(1.f, 1.f, 1.f + 0.13f * Wrong));
+		Second->SetActorScale3D(FVector(1.f, 1.f, 1.f + 0.13f * Wrong));
 		if (!FollowLight)
 		{
-			FollowLight = AddFaceLight(Man);
+			FollowLight = AddFaceLight(Second);
 		}
-		// The hall lamps are in the thousands but metres away; this one is a hand's width from his face.
+		// The hall lamps are in the thousands but metres away; this one is a hand's width from her face.
 		FollowLight->SetIntensity(110.f * Wrong);
 
 		if (HandTimer > 6.2f && !bHushed)
 		{
 			bHushed = true;
 			Say(TEXT("\"Shh. Nobody is going to hurt you.\""), 4.5f);
-			HG::Voice(this, TEXT("doc_hush"), ManFace);
+			HG::Voice(this, TEXT("doc_hush"), SecondFace);
 		}
 
 		if (!bCorridor)
 		{
 			Player->SetLens(FMath::Lerp(82.f, 88.f, FMath::Clamp(HandTimer / 3.f, 0.f, 1.f)));
 			// The other doctor lets her past and then follows, a few steps behind, all the way.
-			bManFollows = bManFollows || WomanAt.Y > Man->GetActorLocation().Y + 150.f;
-			if (bManFollows)
+			bSecondFollows = bSecondFollows || WomanAt.Y > Second->GetActorLocation().Y + 150.f;
+			if (bSecondFollows)
 			{
-				const FVector ManPath[] = { FVector(446, 500, 0), FVector(432, Door.Y - 195.f, 0) };
-				if (WalkPerson(Man, ManAnim, ManPath[ManLeg], 92.f, 0.72f, Dt) && ManLeg < 1)
+				const FVector SecondPath[] = { FVector(446, 500, 0), FVector(432, Door.Y - 195.f, 0) };
+				if (WalkPerson(Second, SecondAnim, SecondPath[SecondLeg], 92.f, 0.72f, Dt) && SecondLeg < 1)
 				{
-					++ManLeg;
+					++SecondLeg;
 				}
 			}
-			else if (WalkPerson(Man, ManAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
+			else if (WalkPerson(Second, SecondAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
 			{
-				FacePerson(Man, Eyes, Dt, 2.f);
+				FacePerson(Second, Eyes, Dt, 2.f);
 			}
-			PersonLooks(Man, ManAnim, Eyes, 0.7f);
+			PersonLooks(Second, SecondAnim, Eyes, 0.7f);
 
 			if (bShots)
 			{
 				// Pictures: mom left in the doorway, the one following, the one carrying, and the far end.
-				Player->TurnTowards(HandTimer < 4.4f ? MomFace : ((HandTimer > 8.4f && HandTimer < 10.2f) ? WomanFace : ManFace), Dt, 2.5f);
+				Player->TurnTowards(HandTimer < 4.4f ? MomFace : ((HandTimer > 8.4f && HandTimer < 10.2f) ? WomanFace : SecondFace), Dt, 2.5f);
 				if (HandTimer > 4.2f) { Shot(3, TEXT("ward-10-doorway.png")); }
 				if (HandTimer > 8.2f) { Shot(4, TEXT("ward-11-following.png")); }
 				if (HandTimer > 10.f) { Shot(5, TEXT("ward-12-carrier.png")); }
@@ -998,12 +999,12 @@ UPointLightComponent* AHGGameMode::AddFaceLight(AActor* Person)
 void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 {
 	AActor* Woman = WardDoctors[0];
-	AActor* Man = WardDoctors[1];
-	UHGPersonAnim* ManAnim = DoctorAnims[1];
+	AActor* Second = WardDoctors[1];
+	UHGPersonAnim* SecondAnim = DoctorAnims[1];
 	const FVector Eyes = Player->EyeLocation();
 	const FVector WomanAt = Woman->GetActorLocation();
 	const FVector Door = Level->OpDoorSpot();
-	const FVector ManFace = PersonPoint(Man, 9.f, 0.f, 166.f);
+	const FVector SecondFace = PersonPoint(Second, 9.f, 0.f, 166.f);
 	const bool bFirst = CorridorTimer <= 0.f;
 	CorridorTimer += Dt;
 	// How far along the corridor he is, from its start to the door.
@@ -1024,6 +1025,8 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 		HG::ExtraBed(this, TEXT("hall_low"), 0.5f);
 		HeartBed = HG::ExtraBed(this, TEXT("heart"), 0.06f);
 		HG::ExtraAt(this, TEXT("hall_voices"), FVector(300, 2150, 120), 0.8f);
+		// And a radio, somewhere further down, behind a wall.
+		HG::ExtraAt(this, TEXT("radio"), FVector(300, 3950, 120), 0.9f);
 		for (AActor* Person : Staff)
 		{
 			Person->SetActorHiddenInGame(false);
@@ -1046,7 +1049,11 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	{
 		++LampsOut;
 		LampWait = 0.85f;
-		HG::Play(this, TEXT("tick"), 0.55f, 0.55f);
+		// The lamp's own death rattle where the private assets have it; a bare click where they do not.
+		if (!HG::Extra(this, TEXT("lamp_die"), FVector(430, LampAlong[LampsOut - 1], 240), 0.9f, FMath::FRandRange(0.94f, 1.05f)))
+		{
+			HG::Play(this, TEXT("tick"), 0.55f, 0.55f);
+		}
 	}
 	for (int32 i = 0; i < LampsOut; ++i)
 	{
@@ -1108,31 +1115,31 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	if (!bOvertaking && WomanAt.Y > Door.Y - 1300.f)
 	{
 		bOvertaking = true;
-		OvertakeVia = FVector(548, Man->GetActorLocation().Y + 260.f, 0);
+		OvertakeVia = FVector(548, Second->GetActorLocation().Y + 260.f, 0);
 	}
-	bool bManAtDoor = false;
+	bool bSecondAtDoor = false;
 	if (!bOvertaking)
 	{
-		WalkPerson(Man, ManAnim, FVector(432, Door.Y - 195.f, 0), 92.f, 0.72f, Dt);
+		WalkPerson(Second, SecondAnim, FVector(432, Door.Y - 195.f, 0), 92.f, 0.72f, Dt);
 	}
 	else
 	{
 		const FVector Legs[] = { OvertakeVia, FVector(548, Door.Y - 80.f, 0) };
-		const bool bThere = WalkPerson(Man, ManAnim, Legs[OvertakeLeg], 165.f, 1.25f, Dt);
+		const bool bThere = WalkPerson(Second, SecondAnim, Legs[OvertakeLeg], 165.f, 1.25f, Dt);
 		if (bThere && OvertakeLeg < 1)
 		{
 			++OvertakeLeg;
 		}
-		bManAtDoor = bThere && OvertakeLeg == 1;
-		if (bManAtDoor)
+		bSecondAtDoor = bThere && OvertakeLeg == 1;
+		if (bSecondAtDoor)
 		{
-			// He holds it open and watches him brought in.
-			FacePerson(Man, Eyes, Dt, 2.5f);
+			// She holds it open and watches him brought in.
+			FacePerson(Second, Eyes, Dt, 2.5f);
 		}
 	}
-	PersonLooks(Man, ManAnim, Eyes, 0.7f);
+	PersonLooks(Second, SecondAnim, Eyes, 0.7f);
 
-	if (bManAtDoor && !bOpDoor && WomanAt.Y > Door.Y - 520.f)
+	if (bSecondAtDoor && !bOpDoor && WomanAt.Y > Door.Y - 520.f)
 	{
 		bOpDoor = true;
 		HG::Extra(this, TEXT("door_handle"), Door + FVector(0, 0, 100), 1.f);
@@ -1149,6 +1156,12 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 		}
 	}
 
+	if (!bWhimpered && Along > 0.42f)
+	{
+		// He has stopped crying out loud by now. This is what is left.
+		bWhimpered = true;
+		HG::ExtraBed(this, TEXT("child_whimper"), 0.35f);
+	}
 	if (!bNearlySaid && WomanAt.Y > 2760.f)
 	{
 		bNearlySaid = true;
@@ -1164,7 +1177,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	{
 		bHereSaid = true;
 		Say(TEXT("\"Here we are. In you go.\""), 4.f);
-		HG::Voice(this, TEXT("doc_here"), ManFace);
+		HG::Voice(this, TEXT("doc_here"), SecondFace);
 	}
 
 	// Through the door the picture burns out to white, and that is where the scene ends.
@@ -1184,7 +1197,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	{
 		const float Y = static_cast<float>(WomanAt.Y);
 		const FVector Ahead(470, Y + 900.f, 170);
-		FVector Look = ManFace;
+		FVector Look = SecondFace;
 		if (Y > 1750.f && Y < 2250.f) { Look = Ahead; }
 		else if (Y >= 2250.f && Y < 2640.f && Staff.Num() > 0) { Look = PersonPoint(Staff[0], 9.f, 0.f, 165.f); }
 		else if (Y >= 3260.f && Y < 3640.f && Staff.Num() > 1) { Look = PersonPoint(Staff[1], 9.f, 0.f, 170.f); }
@@ -1213,9 +1226,9 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 {
 	AActor* Woman = WardDoctors[0];
-	AActor* Man = WardDoctors[1];
+	AActor* Second = WardDoctors[1];
 	UHGPersonAnim* WomanAnim = DoctorAnims[0];
-	UHGPersonAnim* ManAnim = DoctorAnims[1];
+	UHGPersonAnim* SecondAnim = DoctorAnims[1];
 	const FVector Chair = Level->ChairSpot();
 	const FVector Door = Level->OpDoorSpot();
 	const bool bFirst = ChairTimer <= 0.f;
@@ -1257,11 +1270,11 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 			WomanAnim->SetHold(1.f);
 			WomanAnim->LookTowards(0.f, -8.f);
 		}
-		// The other doctor is at the table, with his back half turned, busy with what is on it.
-		Man->SetActorLocationAndRotation(FVector(Chair.X - 105.f, Chair.Y + 64.f, 0.f), FRotator(0.f, 90.f + MomYawOffset, 0.f));
-		if (ManAnim)
+		// The other doctor is at the table, with her back half turned, busy with what is on it.
+		Second->SetActorLocationAndRotation(FVector(Chair.X - 105.f, Chair.Y + 64.f, 0.f), FRotator(0.f, 90.f + MomYawOffset, 0.f));
+		if (SecondAnim)
 		{
-			ManAnim->SetClip(PersonIdle);
+			SecondAnim->SetClip(PersonIdle);
 		}
 		// The two who followed stand just inside the door and watch.
 		static const FVector Inside[] = { FVector(58, -30, 0), FVector(50, 32, 0) };
@@ -1299,7 +1312,7 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 	}
 	Player->CarryEyesTo(PersonPoint(Woman, 38.f, 0.f, 136.f));
 	const FVector Eyes = Player->EyeLocation();
-	const FVector ManFace = PersonPoint(Man, 9.f, 0.f, 185.f);
+	const FVector SecondFace = PersonPoint(Second, 9.f, 0.f, 185.f);
 	for (int32 i = 0; i < Staff.Num(); ++i)
 	{
 		PersonLooks(Staff[i], StaffAnims.IsValidIndex(i) ? StaffAnims[i].Get() : nullptr, Eyes, 0.6f);
@@ -1320,25 +1333,25 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 	}
 	if (T > 7.8f && Once(2))
 	{
-		HG::Extra(this, TEXT("glove"), ManFace - FVector(0, 0, 60), 0.9f);
+		HG::Extra(this, TEXT("glove"), SecondFace - FVector(0, 0, 60), 0.9f);
 	}
 	if (T > 8.8f)
 	{
-		// He turns from the table and comes to stand over him.
-		if (WalkPerson(Man, ManAnim, FVector(Chair.X - 78.f, Chair.Y + 12.f, 0.f), 55.f, 0.5f, Dt))
+		// She turns from the table and comes to stand over him.
+		if (WalkPerson(Second, SecondAnim, FVector(Chair.X - 78.f, Chair.Y + 12.f, 0.f), 55.f, 0.5f, Dt))
 		{
-			FacePerson(Man, Eyes, Dt, 3.f);
+			FacePerson(Second, Eyes, Dt, 3.f);
 		}
-		PersonLooks(Man, ManAnim, Eyes, 0.9f);
+		PersonLooks(Second, SecondAnim, Eyes, 0.9f);
 	}
-	else if (ManAnim)
+	else if (SecondAnim)
 	{
-		ManAnim->LookTowards(0.f, -14.f);
+		SecondAnim->LookTowards(0.f, -14.f);
 	}
 	if (T > 10.2f && Once(3))
 	{
 		Say(TEXT("\"We'll just cover your eyes. There.\""), 4.f);
-		HG::Voice(this, TEXT("chair_cover"), ManFace);
+		HG::Voice(this, TEXT("chair_cover"), SecondFace);
 		HG::Extra(this, TEXT("cloth"), Eyes, 1.f);
 	}
 
@@ -1391,6 +1404,12 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 		{
 			RingBed->SetVolumeMultiplier(0.02f + 0.33f * FMath::SmoothStep(6.5f, 9.5f, C) * (1.f - FMath::SmoothStep(17.f, 22.f, C)));
 		}
+		if (C > 9.f && !bChairWhimper)
+		{
+			// His own voice, small, from under the cloth.
+			bChairWhimper = true;
+			Dull(HG::ExtraBed(this, TEXT("child_whimper"), 0.5f));
+		}
 		if (C > 12.5f && Once(8))
 		{
 			Say(TEXT("\"Shh. Shh. Nearly done.\""), 4.f);
@@ -1409,7 +1428,7 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 		// Pictures: the room from her lap, her arms round him, the doctor over him, then the cloth four times.
 		if (T < 5.8f) { Player->TurnTowards(FVector(Door.X, Door.Y + 40.f, 110.f), Dt, 3.f); }
 		else if (T < 8.f) { Player->TurnTowards(PersonPoint(Woman, 70.f, 0.f, 62.f), Dt, 3.f); }
-		else { Player->TurnTowards(ManFace, Dt, 3.f); }
+		else { Player->TurnTowards(SecondFace, Dt, 3.f); }
 		if (T > 5.6f) { Shot(15, TEXT("ward-22-lap.png")); }
 		if (T > 7.8f) { Shot(16, TEXT("ward-23-held.png")); }
 		if (T > 10.8f) { Shot(17, TEXT("ward-24-over-him.png")); }
@@ -1524,6 +1543,7 @@ void AHGGameMode::BeginEscape(AHGPlayer* Player)
 		HeartBed = HG::ExtraBed(this, TEXT("heart"), 0.08f);
 	}
 	DroneBed = HG::ExtraBed(this, TEXT("escape_drone"), 0.4f);
+	BreathBed = HG::ExtraBed(this, TEXT("child_breath"), 0.001f);
 	for (int32 i = 0; i < Staff.Num(); ++i)
 	{
 		Staff[i]->SetActorHiddenInGame(true);
@@ -1590,7 +1610,7 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 {
 	AActor* Doctor = WardDoctors[S.Doctor];
 	UHGPersonAnim* Anim = DoctorAnims[S.Doctor];
-	const bool bMan = S.Doctor == 1;
+	const bool bSecond = S.Doctor == 1;
 	const FVector At = Doctor->GetActorLocation();
 	const FVector2D At2(At.X, At.Y);
 	const FVector Head = At + FVector(0, 0, 186);
@@ -1642,7 +1662,7 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 	{
 		if (S.State != 2 && S.CallWait < 100.f)
 		{
-			if (!bMan)
+			if (!bSecond)
 			{
 				HG::Voice(this, TEXT("esc_woman_hear"), Head);
 				Say(TEXT("\"I can hear you.\""), 3.f);
@@ -1657,8 +1677,8 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 		S.State = 4;
 		S.Target = Kept(Him);
 		HG::ExtraBed(this, TEXT("spotted"), 0.7f);
-		HG::Voice(this, bMan ? TEXT("esc_man_there") : TEXT("esc_woman_there"), Head);
-		Say(bMan ? TEXT("\"There he is.\"") : TEXT("\"There you are.\""), 3.f);
+		HG::Voice(this, bSecond ? TEXT("esc_other_there") : TEXT("esc_woman_there"), Head);
+		Say(bSecond ? TEXT("\"There he is.\"") : TEXT("\"There you are.\""), 3.f);
 	}
 
 	FVector2D Goal = At2;
@@ -1751,11 +1771,11 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 		{
 			S.CallWait = FMath::FRandRange(14.f, 21.f);
 			const bool bFirst = FMath::RandBool();
-			const TCHAR* Line = bMan ? (bFirst ? TEXT("esc_man_where") : TEXT("esc_man_come")) : TEXT("esc_woman_time");
+			const TCHAR* Line = bSecond ? (bFirst ? TEXT("esc_other_where") : TEXT("esc_other_come")) : TEXT("esc_woman_time");
 			HG::Voice(this, Line, Head);
 			if (Apart < 1000.f)
 			{
-				Say(bMan ? (bFirst ? TEXT("\"Where are you, little one?\"") : TEXT("\"Come out now. We're not finished.\"")) : TEXT("\"Sweetheart? It's time to come back.\""), 4.f);
+				Say(bSecond ? (bFirst ? TEXT("\"Where are you, little one?\"") : TEXT("\"Come out now. We're not finished.\"")) : TEXT("\"Sweetheart? It's time to come back.\""), 4.f);
 			}
 		}
 	}
@@ -1772,7 +1792,7 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 		Say(TEXT("\"Got you. Back we go.\""), 3.5f);
 		HG::VoiceBed(this, TEXT("esc_caught"), 1.f);
 		HG::ExtraBed(this, TEXT("caught"), 0.8f);
-		UE_LOG(LogHG, Log, TEXT("HGTEST CAUGHT by=%s catches=%d checkpoint=%d hidden=%d"), bMan ? TEXT("man") : TEXT("woman"), Catches, Checkpoint, bHidden ? 1 : 0);
+		UE_LOG(LogHG, Log, TEXT("HGTEST CAUGHT by=%s catches=%d checkpoint=%d hidden=%d"), bSecond ? TEXT("second") : TEXT("first"), Catches, Checkpoint, bHidden ? 1 : 0);
 	}
 }
 
@@ -1860,6 +1880,12 @@ void AHGGameMode::TickEscape(float Dt, AHGPlayer* Player)
 		HeartBed->SetVolumeMultiplier(0.08f + 0.85f * Worst);
 		HeartBed->SetPitchMultiplier(1.f + 0.3f * Worst);
 	}
+	if (BreathBed)
+	{
+		// Under a bed he can hear himself breathe, and the nearer they are to sure, the louder it seems.
+		BreathLevel = FMath::FInterpConstantTo(BreathLevel, bHidden ? 0.3f + 0.4f * Worst : 0.f, Dt, 1.5f);
+		BreathBed->SetVolumeMultiplier(FMath::Max(0.001f, BreathLevel));
+	}
 
 	// Caught: the dark, and he is back where he had got to, with them gone back to their rounds.
 	if (CaughtTimer >= 0.f)
@@ -1932,7 +1958,7 @@ void AHGGameMode::TickEscape(float Dt, AHGPlayer* Player)
 	{
 		// The self-play check of scene five: each thing he can do, and each thing they do, once.
 		EscBotTimer += Dt;
-		AActor* Man = WardDoctors[1];
+		AActor* Second = WardDoctors[1];
 		switch (EscBot)
 		{
 		case 0:
@@ -1975,9 +2001,9 @@ void AHGGameMode::TickEscape(float Dt, AHGPlayer* Player)
 			}
 			else if (CaughtTimer < 0.f && EscBotTimer < 25.f)
 			{
-				// Stand in the aisle right in front of him.
-				const FVector Ahead = FRotator(0.f, Man->GetActorRotation().Yaw - MomYawOffset, 0.f).Vector() * 70.f;
-				Player->SetActorLocation(FVector(Man->GetActorLocation().X + Ahead.X, Man->GetActorLocation().Y + Ahead.Y, 60.f));
+				// Stand in the aisle right in front of her.
+				const FVector Ahead = FRotator(0.f, Second->GetActorRotation().Yaw - MomYawOffset, 0.f).Vector() * 70.f;
+				Player->SetActorLocation(FVector(Second->GetActorLocation().X + Ahead.X, Second->GetActorLocation().Y + Ahead.Y, 60.f));
 			}
 			else if (EscBotTimer >= 25.f)
 			{
@@ -2114,6 +2140,7 @@ void AHGGameMode::TickEnding(float Dt, AHGPlayer* Player)
 	const float Calm = FMath::SmoothStep(0.f, 4.f, T);
 	if (HeartBed) { HeartBed->SetVolumeMultiplier(0.08f * (1.f - Calm)); }
 	if (DroneBed) { DroneBed->SetVolumeMultiplier(0.4f * (1.f - Calm)); }
+	if (BreathBed) { BreathBed->SetVolumeMultiplier(0.001f); }
 	SetWardSound(FMath::SmoothStep(2.f, 8.f, T));
 	Player->SetSaturation(FMath::Lerp(0.18f, 1.3f, FMath::SmoothStep(0.5f, 7.f, T)));
 
@@ -2438,7 +2465,7 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 		// The escape passes when crawling, hiding, the lure, being caught, being carried back and the door all worked, and he reached her.
 		const bool bEscapeGood = EscBotPassed == 63 && bEndingDone && ClosingPage >= 3;
 		UE_LOG(LogHG, Log, TEXT("HGTEST ESCAPE %s staged=%d worked=%d catches=%d ending=%d page=%d"), (!bStaged || bEscapeGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, EscBotPassed, Catches, bEndingDone ? 1 : 0, ClosingPage);
-		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && bChairGood && bEscapeGood && Player->IsCarried() && VoicesFound == 26 && CorridorSoundsFound == 16));
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && bChairGood && bEscapeGood && Player->IsCarried() && VoicesFound == 26 && CorridorSoundsFound == 21));
 		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}
