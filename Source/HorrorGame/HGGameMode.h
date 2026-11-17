@@ -134,7 +134,7 @@ private:
 
 	/** What their faces are doing. Null entries when a person has no face mesh. */
 	UPROPERTY()
-	TObjectPtr<UHGFaceAnim> MomFace;
+	TObjectPtr<UHGFaceAnim> MomFaceAnim;
 
 	UPROPERTY()
 	TArray<TObjectPtr<UHGFaceAnim>> DoctorFaces;

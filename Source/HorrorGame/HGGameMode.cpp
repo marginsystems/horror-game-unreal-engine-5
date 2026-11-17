@@ -335,13 +335,13 @@ void AHGGameMode::PopulateWard()
 	UHGFaceAnim* Face = nullptr;
 	WardMom = SpawnPerson(TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, Anim, Face);
 	MomAnim = Anim;
-	MomFace = Face;
+	MomFaceAnim = Face;
 	if (WardMom)
 	{
-		if (MomFace)
+		if (MomFaceAnim)
 		{
 			// Watching him play, she is happy.
-			MomFace->SetWarm(0.7f);
+			MomFaceAnim->SetWarm(0.7f);
 		}
 		if (MomAnim)
 		{
@@ -639,11 +639,11 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			{
 				MomAnim->SetHold(1.f);
 			}
-			if (MomFace)
+			if (MomFaceAnim)
 			{
 				// The small sad smile he remembers.
-				MomFace->SetWarm(0.6f);
-				MomFace->SetSad(0.85f);
+				MomFaceAnim->SetWarm(0.6f);
+				MomFaceAnim->SetSad(0.85f);
 			}
 			HandFrom = Eyes;
 			Next();
@@ -689,10 +689,10 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 				WomanAnim->SetClip(PersonIdle);
 				WomanAnim->SetHold(1.f);
 			}
-			if (MomFace)
+			if (MomFaceAnim)
 			{
-				MomFace->SetWarm(0.3f);
-				MomFace->SetSad(1.f);
+				MomFaceAnim->SetWarm(0.3f);
+				MomFaceAnim->SetSad(1.f);
 			}
 			Next();
 		}
@@ -899,11 +899,11 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	{
 		WardStep = 10;
 		WardTimer = 0.f;
-		if (MomFace)
+		if (MomFaceAnim)
 		{
 			// She knew this was coming. The smile mostly goes.
-			MomFace->SetWarm(0.3f);
-			MomFace->SetSad(0.55f);
+			MomFaceAnim->SetWarm(0.3f);
+			MomFaceAnim->SetSad(0.55f);
 		}
 		Say(TEXT("\"It's all right. The doctors are only going to help you.\""), 6.f);
 		HG::Voice(this, TEXT("mom_doctors"), MomSpot + FVector(0, 0, 150));
