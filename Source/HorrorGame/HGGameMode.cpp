@@ -413,6 +413,10 @@ AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, floa
 	Person->GetComponents(Meshes);
 	for (USkeletalMeshComponent* Mesh : Meshes)
 	{
+		const USkeletalMesh* Asset = Mesh->GetSkeletalMeshAsset();
+		UE_LOG(LogHG, Log, TEXT("HGDEBUG part=%s mesh=%s anim=%s leader=%s post=%s morphs=%d"), *Mesh->GetName(), Asset ? *Asset->GetName() : TEXT("none"),
+			Mesh->GetAnimClass() ? *Mesh->GetAnimClass()->GetName() : TEXT("none"), Mesh->LeaderPoseComponent.IsValid() ? *Mesh->LeaderPoseComponent->GetName() : TEXT("none"),
+			Asset && Asset->GetPostProcessAnimBlueprint() ? *Asset->GetPostProcessAnimBlueprint()->GetName() : TEXT("none"), Asset ? Asset->GetMorphTargets().Num() : 0);
 		if (Mesh->GetName() == TEXT("Body"))
 		{
 			Mesh->SetAnimInstanceClass(UHGPersonAnim::StaticClass());
@@ -572,9 +576,9 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 	const FVector Eyes = Player->EyeLocation();
 	// Where his eyes are in each pair of arms: in front of mom's chest, looking up at her; then on
 	// the doctor's shoulder, looking back the way they came.
-	const FVector MomHold = PersonPoint(WardMom, 36.f, 10.f, 136.f);
-	const FVector DoctorHold = PersonPoint(Woman, 4.f, 21.f, 149.f);
-	const FVector MomFace = PersonPoint(WardMom, 9.f, 0.f, 159.f);
+	const FVector MomHold = PersonPoint(WardMom, 50.f, 8.f, 122.f);
+	const FVector DoctorHold = PersonPoint(Woman, 8.f, 27.f, 148.f);
+	const FVector MomFace = PersonPoint(WardMom, 9.f, 0.f, 153.f);
 	const FVector WomanFace = PersonPoint(Woman, 9.f, 0.f, 160.f);
 	const FVector ManFace = PersonPoint(Man, 9.f, 0.f, 166.f);
 	const FVector WomanAt = Woman->GetActorLocation();
@@ -633,7 +637,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		{
 			Player->TurnTowards(MomFace, Dt, 2.2f);
 		}
-		PersonLooks(WardMom, MomAnim, Eyes, 0.8f);
+		PersonLooks(WardMom, MomAnim, Eyes, 0.35f);
 		if (HandTimer > 4.f) { Shot(0, TEXT("ward-7-lifted.png")); }
 		if (HandTimer > 5.2f)
 		{
@@ -683,6 +687,10 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		}
 		PersonLooks(WardMom, MomAnim, Eyes, 0.6f);
 		PersonLooks(Woman, WomanAnim, Eyes, 0.7f);
+		if (WalkPerson(Man, ManAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
+		{
+			FacePerson(Man, Eyes, Dt, 2.5f);
+		}
 		PersonLooks(Man, ManAnim, Eyes, 0.6f);
 		if (HandTimer > 1.5f && !bCried)
 		{
@@ -703,7 +711,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		// She turns and carries him out and along the hall to the right. Mom comes as far as the
 		// doorway and no further. The other doctor falls in behind, where he cannot help seeing him.
 		static const FVector WomanPath[] = { FVector(402, 430, 0), FVector(430, 1340, 0) };
-		static const FVector ManPath[] = { FVector(418, 470, 0), FVector(432, 1175, 0) };
+		static const FVector ManPath[] = { FVector(446, 500, 0), FVector(432, 1175, 0) };
 		if (WalkPerson(Woman, WomanAnim, WomanPath[HandLeg], 92.f, 0.72f, Dt) && HandLeg < 1)
 		{
 			++HandLeg;
@@ -729,7 +737,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 				++ManLeg;
 			}
 		}
-		else
+		else if (WalkPerson(Man, ManAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
 		{
 			FacePerson(Man, Eyes, Dt, 2.f);
 		}
