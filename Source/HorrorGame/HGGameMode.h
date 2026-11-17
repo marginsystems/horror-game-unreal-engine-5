@@ -348,7 +348,7 @@ private:
 	/** A point given from where a person stands: so far ahead of them, to their left, and up. */
 	FVector PersonPoint(const AActor* Person, float Ahead, float Left, float Up) const;
 
-	/** A faint cold light on the face of the doctor who follows, so what his face becomes can be seen. */
+	/** A faint cold light on the face of the doctor who follows, so what her face becomes can be seen. */
 	UPROPERTY()
 	TObjectPtr<class UPointLightComponent> FollowLight;
 
@@ -362,9 +362,9 @@ private:
 	FVector HandFrom = FVector::ZeroVector;
 	FVector HandMomStop = FVector::ZeroVector;
 	int32 HandLeg = 0;
-	int32 ManLeg = 0;
+	int32 SecondLeg = 0;
 	int32 HandShots = 0;
-	bool bManFollows = false;
+	bool bSecondFollows = false;
 	bool bHushed = false;
 	bool bCried = false;
 	bool bHandedOver = false;

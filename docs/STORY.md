@@ -74,7 +74,8 @@ After the ending, the text of "It was not unusual" is shown to the player, with 
 - **Mom.** Blonde, straight hair past her shoulders with a fringe, blue eyes. A soft sweater,
   jeans, house shoes. Calm. She is the only warm thing
   in the building and the thing the whole escape points at.
-- **The doctors.** Seen the way a child sees them. At the door they are ordinary, polite
+- **The doctors.** Both women, as he remembers them: the one who held him on her lap in the
+  chair, and a second one. Seen the way a child sees them. At the door they are ordinary, polite
   people in white. From the moment he is taken out of his mother's arms they begin to change,
   too slowly to catch: the one walking behind grows taller, their necks and faces lengthen,
   their eyes open too wide and stop blinking, and a smile spreads and stays. By the escape
