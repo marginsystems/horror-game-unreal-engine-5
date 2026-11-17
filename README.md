@@ -82,7 +82,7 @@ In the game, F1, F2 and F3 switch between the three previews.
 | 1 to 4, mouse wheel | Choose an item |
 | F | Smack the flashlight |
 | R | Try again, after the round ends |
-| Esc | Quit |
+| Cmd+Q | Quit |
 
 The scripts are for macOS, the only platform this has been run on so far. On Windows, opening
 `HorrorGame.uproject` and pressing Play should work the same way, but nobody has tried it yet.
