@@ -8,7 +8,9 @@ Written 2026-11-17 while making "Mom". State now:
     fringe. She stands by the bed, looks down at the child and glances at the door by turning
     her head and neck; her body turns only when he has gone well round her.
   - **DoctorWoman** and **DoctorMan** (Grace and Walter): hospital whites. At ten they walk up
-    the hall and stop in the doorway, looking in at him.
+    the hall and stop in the doorway, looking in at him. In scene three the same two Blueprints
+    are spawned a second time, as the people standing in the corridor: every adult in the
+    building has one of those two faces. They stay hidden until the corridor begins.
   Clothes and hair are free MetaHuman packages from Fab (see "Clothes and hair from Fab" below).
   The bodies are moved by `UHGPersonAnim` (`Source/HorrorGame/HGPersonAnim.h`): one looping
   clip, played in place, with the neck and head turned on top of it. It can also fold the arms

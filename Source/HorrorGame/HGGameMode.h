@@ -225,6 +225,8 @@ private:
 
 	/** How many of the story's voice lines are in the private plugin, for the self-play check. */
 	int32 VoicesFound = 0;
+	/** And how many of the corridor's licensed sounds. */
+	int32 CorridorSoundsFound = 0;
 	int32 HandStep = 0;
 	float HandTimer = 0.f;
 	/** Where his eyes were when mom reached him, and where she stops to pick him up. */

@@ -437,6 +437,23 @@ void AHGGameMode::PopulateWard()
 		}
 	}
 	UE_LOG(LogHG, Log, TEXT("HGTEST VOICES found=%d/%d"), VoicesFound, static_cast<int32>(UE_ARRAY_COUNT(Lines)));
+
+	// The corridor's own sounds: her shoes, the rumble, his heart, voices behind a door, a cart, the last door.
+	static const TCHAR* CorridorSounds[] = { TEXT("step_hard_1"), TEXT("step_hard_2"), TEXT("hall_low"), TEXT("heart"), TEXT("hall_voices"), TEXT("cart"), TEXT("op_door") };
+	for (const TCHAR* Name : CorridorSounds)
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/X_%s.X_%s"), Name, Name);
+		if (USoundBase* Found = LoadObject<USoundBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			KeptSounds.Add(Found);
+			++CorridorSoundsFound;
+		}
+		else if (WardMom)
+		{
+			UE_LOG(LogHG, Warning, TEXT("HGTEST MISSING corridor sound %s"), Name);
+		}
+	}
+	UE_LOG(LogHG, Log, TEXT("HGTEST CORRIDOR SOUNDS found=%d/%d"), CorridorSoundsFound, static_cast<int32>(UE_ARRAY_COUNT(CorridorSounds)));
 }
 
 AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim, UHGFaceAnim*& OutFace)
@@ -1356,7 +1373,7 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 		// The corridor passes when he reached the white room, every lamp behind him is out and both people fell in.
 		const bool bCorridorGood = bCorridorDone && LampsOut >= Level->HallLampAlong().Num() - 2 && StaffWalking == 3;
 		UE_LOG(LogHG, Log, TEXT("HGTEST CORRIDOR %s staged=%d lamps=%d staff=%d door=%.2f"), (!bStaged || bCorridorGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, LampsOut, StaffWalking, OpDoorOpen);
-		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && Player->IsCarried() && VoicesFound == 11));
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && Player->IsCarried() && VoicesFound == 11 && CorridorSoundsFound == 7));
 		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}
