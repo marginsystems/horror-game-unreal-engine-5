@@ -62,6 +62,7 @@ void AHGGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 	}
 	Variant = HG::VariantFromKey(Key);
 	bLessBlood = FParse::Param(FCommandLine::Get(), TEXT("HGLessBlood"));
+	FParse::Value(FCommandLine::Get(), TEXT("HGScene="), StartScene);
 	bBot = FParse::Param(FCommandLine::Get(), TEXT("HGBot"));
 	bShots = FParse::Param(FCommandLine::Get(), TEXT("HGShots"));
 	bCatch = FParse::Param(FCommandLine::Get(), TEXT("HGCatch"));
@@ -1223,6 +1224,28 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 				StaffAnims[i]->SetClip(PersonIdle);
 			}
 		}
+		// Everything the walk here had done to them, in case the story was started at this scene.
+		Player->SetSaturation(0.12f);
+		for (UHGPersonAnim* Anim : DoctorAnims) { if (Anim) { Anim->SetWrong(1.f); } }
+		for (UHGPersonAnim* Anim : StaffAnims) { if (Anim) { Anim->SetWrong(1.f); } }
+		for (UHGFaceAnim* Face : DoctorFaces) { if (Face) { Face->SetWrong(1.f); } }
+		for (UHGFaceAnim* Face : StaffFaces) { if (Face) { Face->SetWrong(1.f); } }
+		Man->SetActorScale3D(FVector(1.f, 1.f, 1.13f));
+		for (int32 i = 0; i < Staff.Num(); ++i)
+		{
+			Staff[i]->SetActorHiddenInGame(false);
+			Staff[i]->SetActorScale3D(FVector(1.f, 1.f, 1.13f));
+			if (StaffLights.IsValidIndex(i) && StaffLights[i]) { StaffLights[i]->SetIntensity(90.f); }
+		}
+		if (!FollowLight)
+		{
+			FollowLight = AddFaceLight(Man);
+		}
+		FollowLight->SetIntensity(110.f);
+		if (!HeartBed)
+		{
+			HeartBed = HG::ExtraBed(this, TEXT("heart"), 0.45f);
+		}
 		Level->SetOpDoorOpen(1.f);
 		CardText = TEXT("THE CHAIR");
 		CardStart = GetWorld()->GetTimeSeconds();
@@ -1435,6 +1458,15 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	const float ClockRate = bBot ? 16.f : 2.f;
 	const float SecondsToTen = 240.f - RoundSeconds * ClockRate;
 	Level->SetClock(10.f - FMath::Max(SecondsToTen, 0.f) / 3600.f);
+	if (StartScene >= 4 && !bChair && WardStep < 10 && RoundSeconds > 1.f && WardMom && WardDoctors.Num() == 2)
+	{
+		// Straight to the chair: behind the white, as if he had just been carried in.
+		Player->SetCarried(true);
+		WardStep = 10;
+		HandStep = 6;
+		bChair = true;
+		WhiteOut = 1.f;
+	}
 	TickMom(Dt, Player, SecondsToTen);
 	TickDoctors(Dt, Player);
 	TickBank += Dt;

@@ -196,6 +196,8 @@ private:
 	UPROPERTY()
 	TObjectPtr<class UAudioComponent> RingBed;
 
+	/** -HGScene=4 starts the story at the chair, for working on it without sitting through the first three. */
+	int32 StartScene = 1;
 	bool bChair = false;
 	bool bChairDone = false;
 	float ChairTimer = 0.f;
