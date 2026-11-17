@@ -24,6 +24,16 @@
 			"Enabled": false
 		},
 		{
+			"Name": "MetaHumanCharacter",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
+			"Name": "MetaHumanGenerator",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
 			"Name": "HorrorPrivate",
 			"Enabled": true,
 			"Optional": true

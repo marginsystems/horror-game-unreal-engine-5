@@ -416,7 +416,10 @@ bool AHGSorter::Accept(AHGToy* Toy)
 			Toy->SetActorRelativeRotation(FRotator::ZeroRotator);
 			Toy->bPlaced = true;
 			++Filled;
-			HG::PlayAt(this, TEXT("pickup"), GetActorLocation(), 0.9f, 0.9f + 0.15f * Filled);
+			if (!HG::Extra(this, TEXT("toybox"), GetActorLocation(), 1.f, 0.92f + 0.08f * Filled))
+			{
+				HG::PlayAt(this, TEXT("pickup"), GetActorLocation(), 0.9f, 0.9f + 0.15f * Filled);
+			}
 			return true;
 		}
 	}

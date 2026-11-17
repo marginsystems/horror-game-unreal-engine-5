@@ -1,6 +1,8 @@
 #include "HGGameMode.h"
 
 #include "Camera/CameraActor.h"
+#include "CanvasItem.h"
+#include "CanvasTypes.h"
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -13,6 +15,8 @@
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
+#include "Engine/Font.h"
+#include "Fonts/SlateFontInfo.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
@@ -177,9 +181,18 @@ void AHGGameMode::StartPlay()
 	{
 		Say(FString::Printf(TEXT("Find %d fuses. Power the exit shutter. Leave."), FusesTotal), 7.f);
 	}
-	else if (!bBot)
+	else
 	{
-		BeginCutscene(Cast<AHGPlayer>(UGameplayStatics::GetPlayerPawn(this, 0)));
+		// The ward's own sound, when the private assets have it: a quiet hospital room, birds outside the
+		// window, a wall clock. A music box plays over the opening shots.
+		HG::ExtraBed(this, TEXT("ward_room"), 0.7f);
+		HG::ExtraBed(this, TEXT("ward_birds"), 0.5f);
+		bRealClock = HG::ExtraAt(this, TEXT("clock"), Level->ClockSpot(), 1.f) != nullptr;
+		if (!bBot)
+		{
+			HG::ExtraBed(this, TEXT("musicbox"), 0.55f);
+			BeginCutscene(Cast<AHGPlayer>(UGameplayStatics::GetPlayerPawn(this, 0)));
+		}
 	}
 
 	// The room tone for this place, looping under everything else.
@@ -453,7 +466,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	const float SecondsToTen = 240.f - RoundSeconds * ClockRate;
 	Level->SetClock(10.f - FMath::Max(SecondsToTen, 0.f) / 3600.f);
 	TickBank += Dt;
-	if (TickBank >= 1.f && WardStep < 10)
+	if (TickBank >= 1.f && WardStep < 10 && !bRealClock)
 	{
 		TickBank = 0.f;
 		HG::PlayAt(this, TEXT("tick"), Level->ClockSpot(), 0.55f);
@@ -467,11 +480,25 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	}
 	if (WardStep == 10)
 	{
+		// The handle, the hinge, the hum of the hall, and then hard shoes coming along it.
+		const FVector Doorway(280, 150, 100);
+		if (!bDoorSounded)
+		{
+			bDoorSounded = true;
+			HG::Extra(this, TEXT("door_handle"), Doorway, 1.f);
+			HG::Extra(this, TEXT("door_open"), Doorway, 0.9f);
+			HG::ExtraAt(this, TEXT("hall"), Doorway + FVector(150, 0, 0), 0.9f);
+		}
+		if (WardTimer > 2.2f && !bStepsSounded)
+		{
+			bStepsSounded = true;
+			HG::Extra(this, TEXT("steps_adult"), Doorway + FVector(150, 500, -90), 1.3f);
+		}
 		// The door swings open on the hall: no colour out there, and a cold light.
 		DoorOpen = FMath::FInterpConstantTo(DoorOpen, 1.f, Dt, 0.7f);
 		Level->SetDoorOpen(FMath::SmoothStep(0.f, 1.f, DoorOpen));
 		WardTimer += Dt;
-		if (WardTimer > 7.f && !bOver)
+		if (WardTimer > 9.5f && !bOver)
 		{
 			bOver = true;
 			bWon = true;
@@ -1078,14 +1105,62 @@ void AHGGameMode::TickShots(float Dt, AHGPlayer* Player)
 // ---------------------------------------------------------------------------------------------
 // HUD
 
-void AHGHUD::Centered(const FString& Text, float Y, float Scale, const FLinearColor& Color)
+namespace
 {
-	UFont* Font = GEngine->GetLargeFont();
-	float TextW = 0.f;
-	float TextH = 0.f;
-	GetTextSize(Text, TextW, TextH, Font, Scale);
-	DrawText(Text, FLinearColor(0, 0, 0, Color.A * 0.8f), (Canvas->ClipX - TextW) * 0.5f + 2.f, Y + 2.f, Font, Scale);
-	DrawText(Text, Color, (Canvas->ClipX - TextW) * 0.5f, Y, Font, Scale);
+	const FName FaceLight(TEXT("Light"));
+
+	/**
+	 * The engine font at the size it will be seen. The stock HUD call rasterises it at 9 points and
+	 * stretches the result, which is what made every line look like a low-resolution bitmap.
+	 */
+	FSlateFontInfo HudFont(float Scale, FName Face)
+	{
+		const UFont* Font = GEngine->GetLargeFont();
+		const float Base = Font ? float(Font->LegacyFontSize) : 9.f;
+		return FSlateFontInfo(Font, FMath::Max(4.f, Base * Scale), Face);
+	}
+
+	/** The engine keeps the text item's own measuring function protected; this opens it. */
+	struct FHGTextItem : FCanvasTextItem
+	{
+		using FCanvasTextItem::FCanvasTextItem;
+		using FCanvasTextItem::GetTextSize;
+	};
+}
+
+float AHGHUD::Measure(const FString& Text, float Scale, FName Face) const
+{
+	if (!Canvas || !Canvas->Canvas || Text.IsEmpty())
+	{
+		return 0.f;
+	}
+	const float Dpi = FMath::Max(Canvas->Canvas->GetDPIScale(), 0.01f);
+	const FHGTextItem Item(FVector2D::ZeroVector, FText::FromString(Text), HudFont(Scale, Face), FLinearColor::White);
+	return Item.GetTextSize(Dpi).X / Dpi;
+}
+
+void AHGHUD::Write(const FString& Text, const FLinearColor& Color, float X, float Y, float Scale, FName Face)
+{
+	if (!Canvas || Text.IsEmpty())
+	{
+		return;
+	}
+	FCanvasTextItem Item(FVector2D(FMath::RoundToFloat(X), FMath::RoundToFloat(Y)), FText::FromString(Text), HudFont(Scale, Face), Color);
+	Item.BlendMode = SE_BLEND_Translucent;
+
+	// A soft dark copy underneath keeps white text readable over the bright ward.
+	const float Drop = FMath::Max(1.f, FMath::RoundToFloat(Scale * 0.7f));
+	Item.Position += FVector2D(Drop, Drop);
+	Item.SetColor(FLinearColor(0.f, 0.f, 0.f, Color.A * 0.75f));
+	Canvas->DrawItem(Item);
+	Item.Position -= FVector2D(Drop, Drop);
+	Item.SetColor(Color);
+	Canvas->DrawItem(Item);
+}
+
+void AHGHUD::Centered(const FString& Text, float Y, float Scale, const FLinearColor& Color, FName Face)
+{
+	Write(Text, Color, (Canvas->ClipX - Measure(Text, Scale, Face)) * 0.5f, Y, Scale, Face);
 }
 
 void AHGHUD::DrawHUD()
@@ -1103,7 +1178,6 @@ void AHGHUD::DrawHUD()
 	const float H = Canvas->ClipY;
 	const float S = H / 720.f;
 	const float Now = GetWorld()->GetTimeSeconds();
-	UFont* Font = GEngine->GetLargeFont();
 	const FLinearColor Amber(1.f, 0.78f, 0.25f);
 	const FLinearColor Dim(0.75f, 0.75f, 0.72f);
 
@@ -1115,7 +1189,7 @@ void AHGHUD::DrawHUD()
 	if (Game->IsLoading())
 	{
 		DrawRect(FLinearColor::Black, 0.f, 0.f, W, H);
-		Centered(TEXT("LOADING"), H * 0.42f, 2.6f * S, FLinearColor::White);
+		Centered(TEXT("LOADING"), H * 0.42f, 2.6f * S, FLinearColor::White, FaceLight);
 		Centered(FString::Printf(TEXT("%d things left to prepare. The first start of a new place takes a while."), Game->LoadingLeft), H * 0.54f, 1.1f * S, Dim);
 		return;
 	}
@@ -1131,7 +1205,7 @@ void AHGHUD::DrawHUD()
 	if (Game->IsOver())
 	{
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, bStory ? 0.92f : 0.72f), 0.f, 0.f, W, H);
-		Centered(Game->EndTitle, H * 0.22f, 4.2f * S, bStory ? FLinearColor::White : (Game->HasWon() ? FLinearColor(0.5f, 1.f, 0.6f) : FLinearColor(0.95f, 0.1f, 0.08f)));
+		Centered(Game->EndTitle, H * 0.22f, 4.2f * S, bStory ? FLinearColor::White : (Game->HasWon() ? FLinearColor(0.5f, 1.f, 0.6f) : FLinearColor(0.95f, 0.1f, 0.08f)), FaceLight);
 		float Y = H * 0.42f;
 		for (const FString& Line : Game->EndLines)
 		{
@@ -1150,7 +1224,7 @@ void AHGHUD::DrawHUD()
 			// The title sits over the first shot and is gone before the second.
 			const float T = Game->CineElapsed();
 			const float Alpha = FMath::Clamp(FMath::Min(T - 0.6f, 4.2f - T), 0.f, 1.f);
-			Centered(TEXT("RUSSIA, 1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha));
+			Centered(TEXT("RUSSIA, 1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha), FaceLight);
 			Centered(TEXT("Based on a true story."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
 			return;
 		}
@@ -1169,7 +1243,7 @@ void AHGHUD::DrawHUD()
 	}
 
 	// Fuses, top left.
-	DrawText(FString::Printf(TEXT("FUSES  %d / %d"), Game->Fuses, Game->FusesTotal), Amber, 26.f * S, 20.f * S, Font, 1.6f * S);
+	Write(FString::Printf(TEXT("FUSES  %d / %d"), Game->Fuses, Game->FusesTotal), Amber, 26.f * S, 20.f * S, 1.6f * S);
 
 	if (Player)
 	{
@@ -1178,31 +1252,29 @@ void AHGHUD::DrawHUD()
 		const float Y = H - 52.f * S;
 		if (Player->Slots.Num() == 0)
 		{
-			DrawText(TEXT("Empty hands"), Dim, X, Y, Font, 1.2f * S);
+			Write(TEXT("Empty hands"), Dim, X, Y, 1.2f * S);
 		}
 		for (int32 i = 0; i < Player->Slots.Num(); ++i)
 		{
 			const FString Label = FString::Printf(TEXT("[%d] %s"), i + 1, HG::ItemName(Player->Slots[i]));
 			float TextW = 0.f;
-			float TextH = 0.f;
-			GetTextSize(Label, TextW, TextH, Font, 1.2f * S);
-			DrawText(Label, i == Player->Selected ? Amber : Dim, X, Y, Font, 1.2f * S);
+			TextW = Measure(Label, 1.2f * S);
+			Write(Label, i == Player->Selected ? Amber : Dim, X, Y, 1.2f * S);
 			X += TextW + 26.f * S;
 		}
 
 		// Flashlight and nerves, bottom right.
 		const FString Light = Player->IsFlashlightOn() ? TEXT("FLASHLIGHT  ok") : TEXT("FLASHLIGHT  dead   [F] smack it");
 		float LightW = 0.f;
-		float LightH = 0.f;
-		GetTextSize(Light, LightW, LightH, Font, 1.2f * S);
-		DrawText(Light, Player->IsFlashlightOn() ? Dim : FLinearColor(1.f, 0.3f, 0.2f), W - LightW - 26.f * S, H - 52.f * S, Font, 1.2f * S);
+		LightW = Measure(Light, 1.2f * S);
+		Write(Light, Player->IsFlashlightOn() ? Dim : FLinearColor(1.f, 0.3f, 0.2f), W - LightW - 26.f * S, H - 52.f * S, 1.2f * S);
 
 		const float BarW = 180.f * S;
 		const float BarX = W - BarW - 26.f * S;
 		const float BarY = H - 76.f * S;
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.5f), BarX, BarY, BarW, 8.f * S);
 		DrawRect(FLinearColor::LerpUsingHSV(FLinearColor(1.f, 0.15f, 0.1f), FLinearColor(0.6f, 0.9f, 0.7f), Player->Composure), BarX, BarY, BarW * Player->Composure, 8.f * S);
-		DrawText(TEXT("NERVES"), Dim, BarX - 74.f * S, BarY - 7.f * S, Font, 0.9f * S);
+		Write(TEXT("NERVES"), Dim, BarX - 74.f * S, BarY - 7.f * S, 0.9f * S);
 	}
 
 	// Crosshair.
@@ -1212,7 +1284,7 @@ void AHGHUD::DrawHUD()
 	if (Game->RoundSeconds < 7.f)
 	{
 		const float Alpha = FMath::Clamp(7.f - Game->RoundSeconds, 0.f, 1.f);
-		Centered(HG::VariantTitle(Game->GetVariant()), H * 0.16f, 2.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha));
+		Centered(HG::VariantTitle(Game->GetVariant()), H * 0.16f, 2.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha), FaceLight);
 		Centered(TEXT("WASD move    Shift sprint (loud)    Ctrl tiptoe (silent)    Mouse use    1-4 choose    F smack flashlight"),
 			H * 0.25f, 1.05f * S, FLinearColor(Dim.R, Dim.G, Dim.B, Alpha));
 	}

@@ -302,6 +302,34 @@ namespace HG
 		}
 	}
 
+	static USoundBase* ExtraSound(const TCHAR* Name)
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/X_%s.X_%s"), Name, Name);
+		return LoadObject<USoundBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	}
+
+	bool Extra(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume, float Pitch)
+	{
+		USoundBase* Found = ExtraSound(Name);
+		if (Found)
+		{
+			UGameplayStatics::PlaySoundAtLocation(Context, Found, Location, Volume, Pitch, 0.f, Falloff());
+		}
+		return Found != nullptr;
+	}
+
+	UAudioComponent* ExtraBed(const UObject* Context, const TCHAR* Name, float Volume)
+	{
+		USoundBase* Found = ExtraSound(Name);
+		return Found ? UGameplayStatics::SpawnSound2D(Context, Found, Volume) : nullptr;
+	}
+
+	UAudioComponent* ExtraAt(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume)
+	{
+		USoundBase* Found = ExtraSound(Name);
+		return Found ? UGameplayStatics::SpawnSoundAtLocation(Context, Found, Location, FRotator::ZeroRotator, Volume, 1.f, 0.f, Falloff()) : nullptr;
+	}
+
 	UAudioComponent* LoopOn(USceneComponent* Parent, const TCHAR* Name, float Volume)
 	{
 		USoundBase* Found = Sound(Name);

@@ -74,6 +74,15 @@ namespace HG
 	void Play(const UObject* Context, const TCHAR* Name, float Volume = 1.f, float Pitch = 1.f);
 	/** A spoken line from the private assets plugin (/HorrorPrivate/Audio/V_<name>), heard from where the speaker is. Silent without the plugin. */
 	void Voice(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume = 1.f);
+	/**
+	 * A licensed sound effect from the private assets plugin (/HorrorPrivate/Audio/X_<name>), heard from
+	 * Location. False when the plugin does not have it, so the caller can fall back to a synthesised one.
+	 */
+	bool Extra(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume = 1.f, float Pitch = 1.f);
+	/** The same, but everywhere at once and kept: room tone, music. Looping ones loop. Null without the plugin. */
+	UAudioComponent* ExtraBed(const UObject* Context, const TCHAR* Name, float Volume = 1.f);
+	/** The same, from a fixed place: a clock on a wall, a hum down a hall. */
+	UAudioComponent* ExtraAt(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume = 1.f);
 	/** Starts a looping sound that follows Parent around. */
 	UAudioComponent* LoopOn(USceneComponent* Parent, const TCHAR* Name, float Volume = 1.f);
 

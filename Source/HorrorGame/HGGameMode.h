@@ -82,6 +82,10 @@ private:
 	float CineLeft = 0.f;
 	float DoorOpen = 0.f;
 	float TickBank = 0.f;
+	/** True when a real clock recording is ticking on the wall, so the synthesised tick stays quiet. */
+	bool bRealClock = false;
+	bool bDoorSounded = false;
+	bool bStepsSounded = false;
 	void TickBot(float Dt, AHGPlayer* Player);
 	void TickCatchBot(float Dt, AHGPlayer* Player);
 	void TickShots(float Dt, AHGPlayer* Player);
@@ -143,7 +147,7 @@ private:
 	int32 NoisesHeard = 0;
 };
 
-/** Everything on screen is drawn here with the engine font, so the project needs no UI assets. */
+/** Everything on screen is drawn here with the engine font at its true size, so the project needs no UI assets. */
 UCLASS()
 class AHGHUD : public AHUD
 {
@@ -153,5 +157,8 @@ public:
 	virtual void DrawHUD() override;
 
 private:
-	void Centered(const FString& Text, float Y, float Scale, const FLinearColor& Color);
+	/** Scale 1 is the engine font's own 9 points; text is rasterised at the final size, never stretched. */
+	void Write(const FString& Text, const FLinearColor& Color, float X, float Y, float Scale, FName Face = NAME_None);
+	float Measure(const FString& Text, float Scale, FName Face = NAME_None) const;
+	void Centered(const FString& Text, float Y, float Scale, const FLinearColor& Color, FName Face = NAME_None);
 };

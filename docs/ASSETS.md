@@ -80,3 +80,13 @@ Backrooms ambience and entity sounds: https://www.fab.com/search?q=backrooms&is_
 ## Credits
 
 Add one line here for every CC-BY asset that is committed to the repository.
+
+## Sound and people that live in the private plugin
+
+- **Splice samples** (room tone, birds, the wall clock, toy sounds, a music box, the door, the
+  hall). Splice's licence allows them inside the game, not as loose files, so they are imported
+  to `/HorrorPrivate/Audio/X_*` by `Scripts/import_private_audio.py`. Without the plugin the game
+  falls back to the sounds `Scripts/make_sounds.py` synthesises.
+- **MetaHuman characters** (the mother first). Made through the editor's MCP server; the steps
+  are in [METAHUMAN.md](METAHUMAN.md). Epic's licence allows MetaHumans in an Unreal game, not
+  as published source files, so they stay in the private plugin too.
