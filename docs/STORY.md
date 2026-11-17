@@ -71,7 +71,8 @@ After the ending, the text of "It was not unusual" is shown to the player, with 
 
 ## The people
 
-- **Mom.** Blonde, straight medium-length hair, blue eyes. Calm. She is the only warm thing
+- **Mom.** Blonde, straight hair past her shoulders with a fringe, blue eyes. A soft sweater,
+  jeans, house shoes. Calm. She is the only warm thing
   in the building and the thing the whole escape points at.
 - **The doctors.** Seen the way a child sees them. In scenes 2 to 4 they are ordinary people
   in white coats, masks and head mirrors. In the escape they are too tall, their faces are
