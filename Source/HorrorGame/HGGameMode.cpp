@@ -1623,7 +1623,7 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 			}
 		}
 	}
-	if (bSees)
+	if (bSees && !bShots)
 	{
 		// Being sure takes a moment: less of one close up, more of one if he is down on the floor.
 		const float Rate = (Apart < 300.f ? 1.7f : (Apart < 600.f ? 1.f : 0.55f)) * (Player->IsCrawling() ? 0.6f : 1.f);
@@ -2024,42 +2024,43 @@ void AHGGameMode::TickEscape(float Dt, AHGPlayer* Player)
 			FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / Name, true, false);
 			UE_LOG(LogHG, Log, TEXT("HGTEST SHOT %s"), Name);
 		};
-		switch (EscShot)
+		// A picture is taken a frame after it is asked for, so he is only moved on a moment after each one.
+		struct FView { const TCHAR* Name; FVector Where; FVector Look; bool bDown; };
+		static const FView Views[] = {
+			{ TEXT("ward-29-wakes.png"), FVector(300, 150, 60), FVector(110, 300, 50), false },
+			{ TEXT("ward-30-gap.png"), FVector(415, 330, 26), FVector(415, 700, 30), true },
+			{ TEXT("ward-31-under-bed.png"), FVector(592, 560, 26), FVector(250, 700, 100), true },
+			{ TEXT("ward-32-ward.png"), FVector(250, 470, 60), FVector(250, 1500, 120), false },
+			{ TEXT("ward-33-corridor.png"), FVector(640, 2090, 60), FVector(1500, 2070, 120), false },
+			{ TEXT("ward-34-under-counter.png"), FVector(960, 2200, 26), FVector(1290, 2200, 24), true },
+			{ TEXT("ward-35-door.png"), FVector(1380, 2086, 60), FVector(1700, 2086, 90), false },
+			{ TEXT("ward-36-door-open.png"), FVector(1580, 2086, 60), FVector(1900, 2086, 110), false },
+		};
+		const int32 View = EscShot / 2;
+		if (T > 5.f && View < UE_ARRAY_COUNT(Views))
 		{
-		case 0:
-			if (T > 5.f) { Place(FVector(300, 150, 60), FVector(110, 300, 50), false); }
-			break;
-		case 1:
-			if (EscShotTimer > 1.5f) { Snap(TEXT("ward-29-wakes.png")); Place(FVector(415, 330, 26), FVector(415, 700, 30), true); }
-			break;
-		case 2:
-			if (EscShotTimer > 1.8f)
+			if (EscShot % 2 == 0 && EscShotTimer > 0.5f)
 			{
-				Snap(TEXT("ward-30-gap.png"));
-				WardDoctors[1]->SetActorLocation(Corner + FVector(250, 700, 0));
-				Place(FVector(592, 560, 26), FVector(250, 700, 100), true);
+				if (View == 2)
+				{
+					// For the picture from under the bed, the doctor is put in the aisle beside it.
+					WardDoctors[1]->SetActorLocation(Corner + FVector(250, 700, 0));
+				}
+				Place(Views[View].Where, Views[View].Look, Views[View].bDown);
 			}
-			break;
-		case 3:
-			if (EscShotTimer > 1.8f) { Snap(TEXT("ward-31-under-bed.png")); Place(FVector(250, 470, 60), FVector(250, 1500, 120), false); }
-			break;
-		case 4:
-			if (EscShotTimer > 1.8f) { Snap(TEXT("ward-32-ward.png")); Place(FVector(640, 2090, 60), FVector(1500, 2070, 120), false); }
-			break;
-		case 5:
-			if (EscShotTimer > 1.8f) { Snap(TEXT("ward-33-corridor.png")); Place(FVector(960, 2200, 26), FVector(1290, 2200, 24), true); }
-			break;
-		case 6:
-			if (EscShotTimer > 1.8f) { Snap(TEXT("ward-34-under-counter.png")); Place(FVector(1380, 2086, 60), FVector(1700, 2086, 90), false); }
-			break;
-		case 7:
-			if (EscShotTimer > 1.8f) { Snap(TEXT("ward-35-door.png")); Place(FVector(1580, 2086, 60), FVector(1900, 2086, 110), false); }
-			break;
-		case 8:
-			if (EscShotTimer > 2.6f) { Snap(TEXT("ward-36-door-open.png")); Place(FVector(1800, 2086, 60), FVector(2110, 2090, 150), false); }
-			break;
-		default:
-			break;
+			else if (EscShot % 2 == 1 && EscShotTimer > 2.6f)
+			{
+				Snap(Views[View].Name);
+				++EscShot;
+				EscShotTimer = 0.f;
+			}
+		}
+		else if (View >= UE_ARRAY_COUNT(Views) && EscShotTimer > 2.6f && !bEnding)
+		{
+			// And in through the door.
+			Player->ForceCrawl(false);
+			Player->SetActorLocation(Corner + FVector(1800, 2086, 60));
+			Player->LookAt(Corner + FVector(2110, 2090, 150));
 		}
 	}
 }
@@ -3362,7 +3363,7 @@ void AHGHUD::DrawHUD()
 			const float Ink = 1.f - 0.9f * Game->WhiteOut;
 			Centered(Game->CardText, H * 0.40f, 3.4f * S, FLinearColor(Ink, Ink, Ink, Alpha), FaceLight);
 		}
-		if (Game->RoundSeconds < 12.f)
+		if (Game->RoundSeconds < 12.f && Now >= Game->HintUntil)
 		{
 			const float Alpha = FMath::Clamp(12.f - Game->RoundSeconds, 0.f, 1.f);
 			Centered(TEXT("WASD move      Mouse look      Click to pick up and put down"), H * 0.845f, 1.05f * S, FLinearColor(Dim.R, Dim.G, Dim.B, Alpha));

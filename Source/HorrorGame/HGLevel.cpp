@@ -1183,7 +1183,7 @@ void AHGLevel::BuildEscape()
 	Drab(380, 400, 450, 420, 56.f, H, Cold, false);
 	Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(498, 150, 110), FVector(0.05f, 0.95f, 2.2f), FLinearColor(0.62f, 0.66f, 0.62f));
 	Painted(this, Root, TEXT("Sphere"), EscapeAt + FVector(492, 186, 176), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
-	Light(250, 200, 1100.f, 520.f, Pale, false);
+	Light(250, 200, 4200.f, 800.f, Pale, false);
 
 	// The long ward: beds down both sides and an aisle between. The beds are put in by the game.
 	Slab(-220, 420, 720, 1940);
@@ -1194,8 +1194,8 @@ void AHGLevel::BuildEscape()
 	Wall(-220, 1920, 560, 1940);
 	Wall(650, 1920, 720, 1940);
 	Drab(560, 1920, 650, 1940, 210.f, H, Cold, false);
-	Light(250, 800, 1700.f, 620.f, Pale, false);
-	Light(250, 1500, 900.f, 560.f, Pale, false);
+	Light(250, 800, 6500.f, 1000.f, Pale, false);
+	Light(250, 1500, 4500.f, 900.f, Pale, false);
 
 	// The corridor across the top, with the nurses' counter along its north wall. Under the counter
 	// is a way through that no adult fits.
@@ -1210,9 +1210,9 @@ void AHGLevel::BuildEscape()
 	// Cupboards against the south wall, to break the length of it.
 	Drab(820, 1940, 900, 1975, 0.f, 190.f, FLinearColor(0.5f, 0.52f, 0.5f), false);
 	Drab(1380, 1940, 1470, 1975, 0.f, 190.f, FLinearColor(0.5f, 0.52f, 0.5f), false);
-	Light(300, 2090, 1100.f, 560.f, Pale, false);
-	Light(1100, 2090, 1500.f, 600.f, Pale, false);
-	Light(1560, 2090, 500.f, 420.f, Pale, false);
+	Light(300, 2090, 4200.f, 900.f, Pale, false);
+	Light(1100, 2090, 5500.f, 900.f, Pale, false);
+	Light(1560, 2090, 2200.f, 700.f, Pale, false);
 
 	// The last room: the only one with colour in it. Its wall is the corridor's east end, with the door in it.
 	const FLinearColor Sunny(0.95f, 0.62f, 0.08f);
