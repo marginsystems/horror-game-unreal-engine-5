@@ -11,9 +11,16 @@ For each one the script
 - and, with HG_BUILD=1, saves the character and assembles /HorrorPrivate/MetaHumans/<Name>/BP_<Name>.
 
 Without HG_BUILD nothing is written to disk; the run only logs what each item's adjustable
-parameters are. Run through the Python commandlet (see Scripts/make-assets.sh for the pattern)
-with -AllowCommandletRendering -RenderOffScreen. It can be run again: items already on a
-character are reused, and the generated clothing assets are cleared before each assembly.
+parameters are. It can be run again: items already on a character are reused, and the generated
+clothing assets are cleared before each assembly.
+
+Two ways to run it (docs/METAHUMAN.md has the full commands):
+
+- In the Python commandlet with -AllowCommandletRendering -RenderOffScreen. This is enough for a
+  person who has been assembled before.
+- In the full editor, with -ExecutePythonScript=<this file> and HG_QUIT=1 so the editor closes
+  when the script ends. A new person's first assembly needs this: it bakes the face textures
+  with TextureGraph, which a commandlet does not start.
 """
 import os
 
@@ -275,11 +282,19 @@ def dress(person):
         unreal.EditorAssetLibrary.save_loaded_asset(character, only_if_is_dirty=False)
 
 
-for who in os.environ.get("HG_WHO", "mom").split(","):
-    if who not in PEOPLE:
-        raise RuntimeError(f"HGASSET FAILED nobody is called {who}; there is {sorted(PEOPLE)}")
-    dress(PEOPLE[who])
-if BUILD:
-    unreal.EditorAssetLibrary.save_directory(ROOT, only_if_is_dirty=True, recursive=True)
-    log("SAVED")
-log("DONE build" if BUILD else "DONE dry run")
+try:
+    for who in os.environ.get("HG_WHO", "mom").split(","):
+        if who not in PEOPLE:
+            raise RuntimeError(f"HGASSET FAILED nobody is called {who}; there is {sorted(PEOPLE)}")
+        dress(PEOPLE[who])
+    if BUILD:
+        unreal.EditorAssetLibrary.save_directory(ROOT, only_if_is_dirty=True, recursive=True)
+        log("SAVED")
+    log("DONE build" if BUILD else "DONE dry run")
+except Exception as error:
+    unreal.log_error(f"HGASSET FAILED {error}")
+    raise
+finally:
+    # In the full editor (see the top of this file) nothing ends the run by itself.
+    if os.environ.get("HG_QUIT", "") == "1":
+        unreal.SystemLibrary.quit_editor()
