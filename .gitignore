@@ -25,3 +25,6 @@ Content/Marketplace/
 # Local editor preferences
 Config/UserEngine.ini
 Config/UserGame.ini
+
+# Private assets plugin: a clone of the private repo (Scripts/get-private-assets.sh)
+Plugins/HorrorPrivate/

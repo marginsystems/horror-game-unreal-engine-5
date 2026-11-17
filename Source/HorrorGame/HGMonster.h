@@ -9,6 +9,7 @@ class AHGLevel;
 class AHGPlayer;
 class UAudioComponent;
 class UPointLightComponent;
+class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class UTextRenderComponent;
 
@@ -47,6 +48,10 @@ private:
 	enum class EState : uint8 { Patrol, Investigate, Linger, Hunt, WindUp, Charge };
 
 	void BuildStandIn(const FLinearColor& Color, float Height);
+	/** Builds the rigged, animated human from the private assets plugin. False when the plugin is not there. */
+	bool BuildHuman(float Scale, const FLinearColor& Tint);
+	/** Plays one clip of the animation library on the rig. Does nothing if it is already playing. */
+	void PlayClip(const TCHAR* Name, float Rate = 1.f, bool bLoop = true);
 	void BuildWalker();
 	void BuildLibrarian();
 	void BuildMouth();
@@ -97,6 +102,12 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> Head;
+
+	/** The animated skeleton from the private assets plugin. Hidden; the visible body follows it bone for bone. */
+	UPROPERTY()
+	TObjectPtr<USkeletalMeshComponent> Rig;
+
+	FName Clip;
 
 	/** The Mouth's top jaw. */
 	UPROPERTY()
