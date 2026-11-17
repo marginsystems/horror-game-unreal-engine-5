@@ -2349,7 +2349,8 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 				FLinearColor Colour(Light, Light * 0.985f, Light * 0.945f);
 
 				const float Wet = ClothWet[Y * CW + X];
-				const float Stained = 1.f - FMath::SmoothStep(Soak - 0.035f, Soak + 0.01f, Wet);
+				// Nothing at all until it starts.
+				const float Stained = (1.f - FMath::SmoothStep(Soak - 0.035f, Soak + 0.01f, Wet)) * FMath::SmoothStep(0.f, 0.04f, Soak);
 				if (Stained > 0.f)
 				{
 					// Fresh at the spreading edge, darker where it has been longest, and the light still shows through it.

@@ -109,7 +109,8 @@ Decided: the game is aimed at players of 16 and over.
   body. His eyes were covered; the player sees what he saw.
 - **A warning at the start** says what the game is: inspired in part by a true story, a child's
   medical procedure, blood and distress.
-- **A "less blood" setting** for players who want the story without the red.
+- **A "less blood" setting** for players who want the story without the red. For now it is
+  the `-HGLessBlood` switch on the command line: what soaks into the cloth is dark and has no colour.
 
 ## Voices
 
@@ -129,6 +130,6 @@ to the second.
 
 1. The ward room and the shape sorter, at child height. (Built.)
 2. The handover and the corridor, one unbroken carried walk. (Built.)
-3. The chair, done with cloth, sound and colour only.
+3. The chair, done with cloth, sound and colour only. (Built.)
 4. The escape in the hospital map: crawling, hiding, doctors that search.
 5. Mom, the ending, and the closing text.
