@@ -12,6 +12,7 @@ class AHGMonster;
 class AHGPlayer;
 class AHGSorter;
 class UAnimSequence;
+class UHGFaceAnim;
 class UHGPersonAnim;
 class AHGToy;
 class USoundBase;
@@ -131,6 +132,13 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UHGPersonAnim>> DoctorAnims;
 
+	/** What their faces are doing. Null entries when a person has no face mesh. */
+	UPROPERTY()
+	TObjectPtr<UHGFaceAnim> MomFace;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UHGFaceAnim>> DoctorFaces;
+
 	UPROPERTY()
 	TObjectPtr<UAnimSequence> PersonIdle;
 
@@ -138,7 +146,7 @@ private:
 	TObjectPtr<UAnimSequence> PersonWalk;
 
 	/** Spawns one of the MetaHuman people and hands back what animates the body. Null when the plugin lacks them. */
-	AActor* SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim);
+	AActor* SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim, UHGFaceAnim*& OutFace);
 	void TickDoctors(float Dt, const AHGPlayer* Player);
 
 	/**

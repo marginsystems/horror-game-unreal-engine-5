@@ -24,6 +24,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
 #include "HGActors.h"
+#include "HGFaceAnim.h"
 #include "HGLevel.h"
 #include "HGMonster.h"
 #include "HGPersonAnim.h"
@@ -331,10 +332,17 @@ void AHGGameMode::PopulateWard()
 	// Mom, standing by the bed, watching him play. Without the plugin her voice is still in the
 	// room, from where she would stand.
 	UHGPersonAnim* Anim = nullptr;
-	WardMom = SpawnPerson(TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, Anim);
+	UHGFaceAnim* Face = nullptr;
+	WardMom = SpawnPerson(TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, Anim, Face);
 	MomAnim = Anim;
+	MomFace = Face;
 	if (WardMom)
 	{
+		if (MomFace)
+		{
+			// Watching him play, she is happy.
+			MomFace->SetWarm(0.7f);
+		}
 		if (MomAnim)
 		{
 			MomAnim->SetClip(PersonIdle);
@@ -365,8 +373,15 @@ void AHGGameMode::PopulateWard()
 	for (int32 i = 0; i < 2; ++i)
 	{
 		UHGPersonAnim* DoctorAnim = nullptr;
-		if (AActor* Doctor = SpawnPerson(DoctorClasses[i], DoctorStarts[i], -90.f, DoctorAnim))
+		UHGFaceAnim* DoctorFace = nullptr;
+		if (AActor* Doctor = SpawnPerson(DoctorClasses[i], DoctorStarts[i], -90.f, DoctorAnim, DoctorFace))
 		{
+			if (DoctorFace)
+			{
+				// Polite, the way people are with a child they are about to upset.
+				DoctorFace->SetWarm(0.35f);
+			}
+			DoctorFaces.Add(DoctorFace);
 			if (DoctorAnim)
 			{
 				DoctorAnim->SetClip(PersonIdle);
@@ -378,9 +393,10 @@ void AHGGameMode::PopulateWard()
 	UE_LOG(LogHG, Log, TEXT("HGTEST DOCTORS spawned=%d"), WardDoctors.Num());
 }
 
-AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim)
+AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim, UHGFaceAnim*& OutFace)
 {
 	OutAnim = nullptr;
+	OutFace = nullptr;
 	UClass* Class = LoadClass<AActor>(nullptr, ClassPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
 	if (!Class)
 	{
@@ -413,14 +429,16 @@ AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, floa
 	Person->GetComponents(Meshes);
 	for (USkeletalMeshComponent* Mesh : Meshes)
 	{
-		const USkeletalMesh* Asset = Mesh->GetSkeletalMeshAsset();
-		UE_LOG(LogHG, Log, TEXT("HGDEBUG part=%s mesh=%s anim=%s leader=%s post=%s morphs=%d"), *Mesh->GetName(), Asset ? *Asset->GetName() : TEXT("none"),
-			Mesh->GetAnimClass() ? *Mesh->GetAnimClass()->GetName() : TEXT("none"), Mesh->LeaderPoseComponent.IsValid() ? *Mesh->LeaderPoseComponent->GetName() : TEXT("none"),
-			Asset && Asset->GetPostProcessAnimBlueprint() ? *Asset->GetPostProcessAnimBlueprint()->GetName() : TEXT("none"), Asset ? Asset->GetMorphTargets().Num() : 0);
 		if (Mesh->GetName() == TEXT("Body"))
 		{
 			Mesh->SetAnimInstanceClass(UHGPersonAnim::StaticClass());
 			OutAnim = Cast<UHGPersonAnim>(Mesh->GetAnimInstance());
+		}
+		else if (Mesh->GetName() == TEXT("Face"))
+		{
+			// The head's own mesh: it follows the body and carries the expression (see HGFaceAnim.h).
+			Mesh->SetAnimInstanceClass(UHGFaceAnim::StaticClass());
+			OutFace = Cast<UHGFaceAnim>(Mesh->GetAnimInstance());
 		}
 	}
 	return Person;
@@ -621,6 +639,12 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			{
 				MomAnim->SetHold(1.f);
 			}
+			if (MomFace)
+			{
+				// The small sad smile he remembers.
+				MomFace->SetWarm(0.6f);
+				MomFace->SetSad(0.85f);
+			}
 			HandFrom = Eyes;
 			Next();
 		}
@@ -664,6 +688,11 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			{
 				WomanAnim->SetClip(PersonIdle);
 				WomanAnim->SetHold(1.f);
+			}
+			if (MomFace)
+			{
+				MomFace->SetWarm(0.3f);
+				MomFace->SetSad(1.f);
 			}
 			Next();
 		}
@@ -723,7 +752,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		Player->CarryEyesTo(DoctorHold + FVector(0.f, 0.f, FMath::Sin(HandTimer * 6.f) * 1.3f));
 		Player->SetLens(FMath::Lerp(82.f, 88.f, FMath::Clamp(HandTimer / 3.f, 0.f, 1.f)));
 
-		if (WalkPerson(WardMom, MomAnim, FVector(258, 150, 0), 66.f, 0.55f, Dt))
+		if (WalkPerson(WardMom, MomAnim, FVector(296, 150, 0), 66.f, 0.55f, Dt))
 		{
 			FacePerson(WardMom, Eyes, Dt, 2.f);
 		}
@@ -749,6 +778,10 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		const float Wrong = FMath::SmoothStep(0.08f, 1.f, Away);
 		if (WomanAnim) { WomanAnim->SetWrong(Wrong); }
 		if (ManAnim) { ManAnim->SetWrong(Wrong); }
+		for (UHGFaceAnim* DoctorFace : DoctorFaces)
+		{
+			if (DoctorFace) { DoctorFace->SetWrong(Wrong); }
+		}
 		// The one behind also grows: too tall for the hall by the end of it.
 		Man->SetActorScale3D(FVector(1.f, 1.f, 1.f + 0.13f * Wrong));
 
@@ -866,6 +899,12 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	{
 		WardStep = 10;
 		WardTimer = 0.f;
+		if (MomFace)
+		{
+			// She knew this was coming. The smile mostly goes.
+			MomFace->SetWarm(0.3f);
+			MomFace->SetSad(0.55f);
+		}
 		Say(TEXT("\"It's all right. The doctors are only going to help you.\""), 6.f);
 		HG::Voice(this, TEXT("mom_doctors"), MomSpot + FVector(0, 0, 150));
 	}
