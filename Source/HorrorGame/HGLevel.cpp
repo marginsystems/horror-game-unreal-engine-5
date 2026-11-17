@@ -1137,6 +1137,136 @@ void AHGLevel::BuildWard()
 	Lamp(this, Root, FVector(-X + 40, 0, 190), FLinearColor(0.7f, 0.85f, 1.f), 3500.f, 900.f, false);
 	Lamp(this, Root, FVector(40, 0, H - 30), FLinearColor(1.f, 0.95f, 0.85f), 4500.f, 1000.f, true);
 	Painted(this, Root, TEXT("Sphere"), FVector(40, 0, H - 14), FVector(0.4f, 0.4f, 0.2f), FLinearColor(1.f, 0.97f, 0.9f), false, 6.f);
+
+	BuildEscape();
+}
+
+void AHGLevel::BuildEscape()
+{
+	// The same building with nobody's colour in it: bare walls, a dark floor, a few lamps that are
+	// failing. Sizes are in centimetres from the corner the first room starts at; +X is east, +Y north.
+	const float H = 300.f, T = 20.f;
+	const FLinearColor Cold(0.30f, 0.36f, 0.40f);
+	const FLinearColor Floor(0.16f, 0.18f, 0.2f);
+	const FLinearColor Roof(0.2f, 0.22f, 0.24f);
+	auto Drab = [this](float X0, float Y0, float X1, float Y1, float Z0, float Z1, const FLinearColor& Tint, bool bFloor)
+	{
+		UStaticMeshComponent* Comp = HG::AddShape(this, Root, TEXT("Cube"), EscapeAt + FVector((X0 + X1) * 0.5f, (Y0 + Y1) * 0.5f, (Z0 + Z1) * 0.5f),
+			FVector(X1 - X0, Y1 - Y0, Z1 - Z0) / 100.f, Tint, 0.f, true);
+		if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Comp->GetMaterial(0)))
+		{
+			Material->SetScalarParameterValue(TEXT("Textured"), 1.f);
+			Material->SetScalarParameterValue(TEXT("Floor"), bFloor ? 1.f : 0.f);
+		}
+	};
+	auto Wall = [&](float X0, float Y0, float X1, float Y1) { Drab(X0, Y0, X1, Y1, 0.f, H, Cold, false); };
+	auto Slab = [&](float X0, float Y0, float X1, float Y1)
+	{
+		Drab(X0, Y0, X1, Y1, -20.f, 0.f, Floor, true);
+		Drab(X0, Y0, X1, Y1, H, H + 20.f, Roof, true);
+	};
+	auto Light = [this](float X, float Y, float Intensity, float Radius, const FLinearColor& Colour, bool bShadows)
+	{
+		EscapeLamps.Add(Lamp(this, Root, EscapeAt + FVector(X, Y, 270), Colour, Intensity, Radius, bShadows));
+		EscapeLampFull.Add(Intensity);
+	};
+	const FLinearColor Pale(0.55f, 0.72f, 1.f);
+
+	// The room he wakes in. Its door is shut and its handle is out of reach; the way out is a gap
+	// at the bottom of the north wall where a panel has come away.
+	Slab(-20, -20, 520, 420);
+	Wall(-20, -20, 0, 420);
+	Wall(-20, -20, 520, 0);
+	Wall(500, -20, 520, 420);
+	Wall(-20, 400, 380, 420);
+	Wall(450, 400, 520, 420);
+	Drab(380, 400, 450, 420, 56.f, H, Cold, false);
+	Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(498, 150, 110), FVector(0.05f, 0.95f, 2.2f), FLinearColor(0.62f, 0.66f, 0.62f));
+	Painted(this, Root, TEXT("Sphere"), EscapeAt + FVector(492, 186, 176), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
+	Light(250, 200, 1100.f, 520.f, Pale, false);
+
+	// The long ward: beds down both sides and an aisle between. The beds are put in by the game.
+	Slab(-220, 420, 720, 1940);
+	Wall(-220, 400, -20, 420);
+	Wall(520, 400, 720, 420);
+	Wall(-220, 400, -200, 1940);
+	Wall(700, 400, 720, 1940);
+	Wall(-220, 1920, 560, 1940);
+	Wall(650, 1920, 720, 1940);
+	Drab(560, 1920, 650, 1940, 210.f, H, Cold, false);
+	Light(250, 800, 1700.f, 620.f, Pale, false);
+	Light(250, 1500, 900.f, 560.f, Pale, false);
+
+	// The corridor across the top, with the nurses' counter along its north wall. Under the counter
+	// is a way through that no adult fits.
+	Slab(-220, 1940, 1720, 2260);
+	Wall(720, 1920, 1720, 1940);
+	Wall(-220, 2240, 1720, 2260);
+	Wall(-220, 1940, -200, 2240);
+	const FLinearColor Wood(0.2f, 0.15f, 0.1f);
+	Drab(900, 2158, 1300, 2164, 0.f, 100.f, Wood, false);
+	Drab(896, 2158, 1304, 2240, 96.f, 104.f, Wood, false);
+	Drab(1080, 2164, 1086, 2240, 60.f, 96.f, Wood, false);
+	// Cupboards against the south wall, to break the length of it.
+	Drab(820, 1940, 900, 1975, 0.f, 190.f, FLinearColor(0.5f, 0.52f, 0.5f), false);
+	Drab(1380, 1940, 1470, 1975, 0.f, 190.f, FLinearColor(0.5f, 0.52f, 0.5f), false);
+	Light(300, 2090, 1100.f, 560.f, Pale, false);
+	Light(1100, 2090, 1500.f, 600.f, Pale, false);
+	Light(1560, 2090, 500.f, 420.f, Pale, false);
+
+	// The last room: the only one with colour in it. Its wall is the corridor's east end, with the door in it.
+	const FLinearColor Sunny(0.95f, 0.62f, 0.08f);
+	const FLinearColor White(0.85f, 0.84f, 0.80f);
+	const float DoorLow = 2040.f, DoorHigh = 2132.f, DoorTop = 208.f;
+	auto Warm = [this](float X0, float Y0, float X1, float Y1, float Z0, float Z1, const FLinearColor& Tint)
+	{
+		Painted(this, Root, TEXT("Cube"), EscapeAt + FVector((X0 + X1) * 0.5f, (Y0 + Y1) * 0.5f, (Z0 + Z1) * 0.5f), FVector(X1 - X0, Y1 - Y0, Z1 - Z0) / 100.f, Tint, true);
+	};
+	Warm(1700, 1820, 1720, DoorLow, 0, H, Sunny);
+	Warm(1700, DoorHigh, 1720, 2360, 0, H, Sunny);
+	Warm(1700, DoorLow, 1720, DoorHigh, DoorTop, H, Sunny);
+	// On the corridor's side the same wall is bare.
+	Drab(1697, 1940, 1700, DoorLow, 0.f, H, Cold, false);
+	Drab(1697, DoorHigh, 1700, 2240, 0.f, H, Cold, false);
+	Drab(1697, DoorLow, 1700, DoorHigh, DoorTop, H, Cold, false);
+	Warm(1720, 1820, 2240, 1840, 0, H, Sunny);
+	Warm(1720, 2340, 2240, 2360, 0, H, Sunny);
+	Warm(2220, 1840, 2240, 2340, 0, H, Sunny);
+	Warm(1720, 1840, 2220, 2340, -20, 0, FLinearColor(0.36f, 0.17f, 0.07f));
+	Warm(1720, 1840, 2220, 2340, H, H + 20, White);
+	// A window full of daylight in the far wall, and a bench under it.
+	Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(2218, 2090, 170), FVector(0.03f, 1.8f, 1.3f), FLinearColor(1.f, 0.98f, 0.9f), false, 9.f);
+	Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(2215, 2090, 170), FVector(0.05f, 0.06f, 1.3f), White);
+	Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(2215, 2090, 170), FVector(0.05f, 1.8f, 0.06f), White);
+	Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(2180, 2090, 42), FVector(0.4f, 1.6f, 0.06f), FLinearColor(0.42f, 0.24f, 0.1f), true);
+	for (const float Side : { -70.f, 70.f })
+	{
+		Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(2180, 2090 + Side, 20), FVector(0.36f, 0.06f, 0.4f), FLinearColor(0.42f, 0.24f, 0.1f));
+	}
+	// The door, hinged on its low-y edge, opening into the room; and the lamp inside, which is the
+	// only one here that throws shadows, so its light reaches the corridor through the doorway alone.
+	MomDoor = HG::AddPivot(this, Root, EscapeAt + FVector(1704, DoorLow, 0));
+	Painted(this, MomDoor, TEXT("Cube"), FVector(0, 46, 104), FVector(0.06f, 0.92f, 2.08f), White, true);
+	Painted(this, MomDoor, TEXT("Sphere"), FVector(-9, 80, 100), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
+	Light(1970, 2090, 5200.f, 760.f, FLinearColor(1.f, 0.93f, 0.8f), true);
+	// A line of warm light under the shut door, for him to find from the far end of the corridor.
+	Painted(this, Root, TEXT("Cube"), EscapeAt + FVector(1696, (DoorLow + DoorHigh) * 0.5f, 1.5f), FVector(0.05f, 0.9f, 0.03f), FLinearColor(1.f, 0.85f, 0.55f), false, 14.f);
+}
+
+void AHGLevel::SetMomDoorOpen(float Alpha)
+{
+	if (MomDoor)
+	{
+		MomDoor->SetRelativeRotation(FRotator(0.f, -100.f * FMath::Clamp(Alpha, 0.f, 1.f), 0.f));
+	}
+}
+
+void AHGLevel::SetEscapeLamp(int32 Index, float Level)
+{
+	if (EscapeLamps.IsValidIndex(Index) && EscapeLamps[Index])
+	{
+		EscapeLamps[Index]->SetIntensity(EscapeLampFull[Index] * FMath::Clamp(Level, 0.f, 1.f));
+	}
 }
 
 void AHGLevel::SetOpDoorOpen(float Alpha)

@@ -18,6 +18,29 @@ class AHGToy;
 class USoundBase;
 class UStaticMesh;
 
+/** One of the doctors looking for him in scene five. */
+struct FHGSearcher
+{
+	/** Which of the two doctors this is. */
+	int32 Doctor = 0;
+	/** The floor this one keeps to. They do not follow him out of it. */
+	FBox2D Zone = FBox2D(ForceInit);
+	/** The two ends of the walk they keep up while nothing has caught their attention. */
+	FVector2D Ends[2] = { FVector2D::ZeroVector, FVector2D::ZeroVector };
+	int32 Heading = 0;
+	/** 0 walking the beat, 1 standing at its end, 2 going to look at a noise, 3 standing looking round, 4 coming for him. */
+	int32 State = 0;
+	float Timer = 0.f;
+	FVector2D Target = FVector2D::ZeroVector;
+	/** From 0, nothing, to 1, sure they have seen him. */
+	float Suspicion = 0.f;
+	float SinceSeen = 100.f;
+	/** True when they watched him go under whatever he is hiding under. Then hiding does not help. */
+	bool bSawHide = false;
+	float StepWait = 0.f;
+	float CallWait = 9.f;
+};
+
 /**
  * Runs one round: builds the place, drops the fuses, weapons and monster into it,
  * and decides when the player has escaped or been caught.
@@ -44,6 +67,8 @@ public:
 	void PlayerCaught(AHGMonster* By);
 	void PlayerDied(const FString& Cause);
 	void Say(const FString& Text, float Seconds = 3.f);
+	/** Scene five: the toy he threw has landed and squeaked. Whoever is in earshot goes to look. */
+	void ToyLanded(const FVector& At);
 	void Travel(EHGVariant To);
 
 	bool IsOver() const { return bOver; }
@@ -82,6 +107,13 @@ public:
 	FVector2D ClothShift = FVector2D::ZeroVector;
 	/** The picture going to black, from 0 to 1. */
 	float BlackOut = 0.f;
+	/** A line of help at the foot of the picture, and when it goes. */
+	FString Hint;
+	float HintUntil = 0.f;
+	/** The closing text: which page is up (-1 for none), how solid its black ground is and how visible its words. */
+	int32 ClosingPage = -1;
+	float ClosingCover = 0.f;
+	float ClosingInk = 0.f;
 	/** -HGLessBlood: the story without the red. What soaks into the cloth is dark and colourless. */
 	bool bLessBlood = false;
 	TArray<FString> EndLines;
@@ -195,6 +227,69 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<class UAudioComponent> RingBed;
+
+	/**
+	 * Scene five, the escape, which is invented. He wakes alone in a side room and goes to find
+	 * his mother. He can crawl, hide under beds and a counter, and throw a toy to draw a doctor
+	 * off. The two doctors walk their beats, come to noises, and come for him if they see him;
+	 * they never run. Being caught is being carried back to where he last got to.
+	 */
+	void BeginEscape(AHGPlayer* Player);
+	void TickEscape(float Dt, AHGPlayer* Player);
+	void TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player);
+	/** Scene six: he finds her. The colour comes back, and then the closing text. */
+	void TickEnding(float Dt, AHGPlayer* Player);
+	/** Puts every doctor in the state the walk from the ward leaves them in: too tall, the wrong face. */
+	void EveryoneWrong(AHGPlayer* Player);
+	/** A hospital bed from the private plugin, with room to crawl under it. */
+	void AddBed(const FVector& Centre, float Yaw);
+	/** The ward's own sound, birds and all: 1 as it is in the ward, 0 gone. */
+	void SetWardSound(float Level);
+
+	TArray<FHGSearcher> Searchers;
+	/** The places he cannot be seen in while he is on his hands and knees. */
+	TArray<FBox> HideBoxes;
+
+	UPROPERTY()
+	TArray<TObjectPtr<class UAudioComponent>> WardBeds;
+	TArray<float> WardBedFull;
+
+	UPROPERTY()
+	TObjectPtr<class UAudioComponent> DroneBed;
+
+	UPROPERTY()
+	TObjectPtr<AHGToy> EscapeToy;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMesh>> BedParts;
+
+	bool bEscape = false;
+	bool bEscapeBegun = false;
+	bool bEnding = false;
+	bool bEndingDone = false;
+	bool bHidden = false;
+	bool bMomDoorSounded = false;
+	bool bToyHint = false;
+	bool bEndLifted = false;
+	bool bCaughtMoved = false;
+	bool bCaughtFreed = false;
+	float EscapeTimer = 0.f;
+	float CaughtTimer = -1.f;
+	float MomDoorOpen = 0.f;
+	float MomCallWait = 5.f;
+	float EndingTimer = 0.f;
+	float EndLift = 0.f;
+	float FlickWait = 0.f;
+	float ClosingTimer = 0.f;
+	int32 Checkpoint = 0;
+	int32 Catches = 0;
+	int32 EscShot = 0;
+	float EscShotTimer = 0.f;
+	int32 EscBot = 0;
+	float EscBotTimer = 0.f;
+	/** One bit for each thing the self-play check saw work: crawl, hide, lure, caught, carried back, door. */
+	int32 EscBotPassed = 0;
+	FVector EndingFrom = FVector::ZeroVector;
 
 	/** -HGScene=4 starts the story at the chair, for working on it without sitting through the first three. */
 	int32 StartScene = 1;
