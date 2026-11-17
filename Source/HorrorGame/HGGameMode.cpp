@@ -396,8 +396,9 @@ void AHGGameMode::PopulateWard()
 	// They are the same two doctors over again, which is how he remembers every adult in that building.
 	if (WardDoctors.Num() == 2)
 	{
-		static const FVector StaffSpots[] = { FVector(548, 2500, 0), FVector(318, 3500, 0) };
-		static const float StaffFacing[] = { 180.f, 0.f };
+		// Both on the left: he is on the doctor's left shoulder, and her head hides whatever is on the right.
+		static const FVector StaffSpots[] = { FVector(548, 2500, 0), FVector(548, 3500, 0) };
+		static const float StaffFacing[] = { 180.f, 180.f };
 		for (int32 i = 0; i < 2; ++i)
 		{
 			UHGPersonAnim* StaffAnim = nullptr;
@@ -410,6 +411,7 @@ void AHGGameMode::PopulateWard()
 				}
 				// Nothing of them is drawn or moved until he is carried into the corridor.
 				Person->SetActorHiddenInGame(true);
+				StaffLights.Add(AddFaceLight(Person));
 				Staff.Add(Person);
 				StaffAnims.Add(StaffAnim);
 				StaffFaces.Add(StaffFace);
@@ -836,16 +838,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		Man->SetActorScale3D(FVector(1.f, 1.f, 1.f + 0.13f * Wrong));
 		if (!FollowLight)
 		{
-			FollowLight = NewObject<UPointLightComponent>(Man);
-			FollowLight->SetMobility(EComponentMobility::Movable);
-			FollowLight->SetupAttachment(Man->GetRootComponent());
-			FollowLight->SetRelativeLocation(FVector(0, 62, 156));
-			FollowLight->SetIntensityUnits(ELightUnits::Unitless);
-			FollowLight->SetLightColor(FLinearColor(0.72f, 0.82f, 1.f));
-			FollowLight->SetAttenuationRadius(120.f);
-			FollowLight->SetCastShadows(false);
-			FollowLight->RegisterComponent();
-			Man->AddInstanceComponent(FollowLight);
+			FollowLight = AddFaceLight(Man);
 		}
 		// The hall lamps are in the thousands but metres away; this one is a hand's width from his face.
 		FollowLight->SetIntensity(110.f * Wrong);
@@ -907,6 +900,22 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		break;
 	}
 	}
+}
+
+UPointLightComponent* AHGGameMode::AddFaceLight(AActor* Person)
+{
+	UPointLightComponent* Light = NewObject<UPointLightComponent>(Person);
+	Light->SetMobility(EComponentMobility::Movable);
+	Light->SetupAttachment(Person->GetRootComponent());
+	Light->SetRelativeLocation(FVector(0, 62, 156));
+	Light->SetIntensityUnits(ELightUnits::Unitless);
+	Light->SetIntensity(0.f);
+	Light->SetLightColor(FLinearColor(0.72f, 0.82f, 1.f));
+	Light->SetAttenuationRadius(120.f);
+	Light->SetCastShadows(false);
+	Light->RegisterComponent();
+	Person->AddInstanceComponent(Light);
+	return Light;
 }
 
 void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
@@ -989,6 +998,10 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 			Anim->SetWrong(Wrong);
 		}
 		Person->SetActorScale3D(FVector(1.f, 1.f, 1.f + 0.13f * Wrong));
+		if (StaffLights.IsValidIndex(i) && StaffLights[i])
+		{
+			StaffLights[i]->SetIntensity(90.f * Wrong);
+		}
 		const FVector At = Person->GetActorLocation();
 		const float Behind = WomanAt.Y - At.Y;
 		if (!(StaffJoined & (1 << i)) && Behind > 140.f)
@@ -1078,7 +1091,13 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	}
 
 	// Through the door the picture burns out to white, and that is where the scene ends.
-	WhiteOut = FMath::Clamp(static_cast<float>(WomanAt.X - (Door.X - 40.0)) / 200.f, 0.f, 1.f);
+	// He is let see the room, and the chair in it, for a moment first.
+	const FVector Chair(Door.X + 260.f, Door.Y, 60.f);
+	WhiteOut = FMath::Clamp(static_cast<float>(WomanAt.X - (Door.X + 70.0)) / 150.f, 0.f, 1.f);
+	if (HandLeg >= 3 && !bShots && WhiteOut <= 0.f)
+	{
+		Player->TurnTowards(Chair, Dt, 1.2f);
+	}
 	if (WhiteOut >= 1.f)
 	{
 		WhiteHeld += Dt;
@@ -1092,6 +1111,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 		if (Y > 1750.f && Y < 2250.f) { Look = Ahead; }
 		else if (Y >= 2250.f && Y < 2640.f && Staff.Num() > 0) { Look = PersonPoint(Staff[0], 9.f, 0.f, 165.f); }
 		else if (Y >= 3260.f && Y < 3640.f && Staff.Num() > 1) { Look = PersonPoint(Staff[1], 9.f, 0.f, 170.f); }
+		else if (HandLeg >= 3) { Look = Chair; }
 		else if (Y >= 4330.f) { Look = Door + FVector(-40, 0, 150); }
 		Player->TurnTowards(Look, Dt, 2.5f);
 		if (CorridorTimer > 2.6f) { Shot(7, TEXT("ward-14-corridor.png")); }
@@ -1100,8 +1120,8 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 		if (Y > 3160.f) { Shot(10, TEXT("ward-17-dark-behind.png")); }
 		if (Y > 3420.f) { Shot(11, TEXT("ward-18-second.png")); }
 		if (Y > 4100.f) { Shot(12, TEXT("ward-19-three.png")); }
-		if (Y > Door.Y - 330.f) { Shot(13, TEXT("ward-20-door.png")); }
-		if (WhiteOut > 0.3f) { Shot(14, TEXT("ward-21-white.png")); }
+		if (Y > Door.Y - 150.f) { Shot(13, TEXT("ward-20-door.png")); }
+		if (WomanAt.X > Door.X + 40.f) { Shot(14, TEXT("ward-21-room.png")); }
 	}
 
 	if (WhiteHeld > 1.6f && !bOver)
@@ -1980,18 +2000,18 @@ void AHGHUD::DrawHUD()
 		return;
 	}
 
+	if (Game->WhiteOut > 0.f)
+	{
+		// The operation room's light, taking the whole picture.
+		DrawRect(FLinearColor(1.f, 1.f, 1.f, Game->WhiteOut), 0.f, 0.f, W, H);
+	}
+
 	const bool bStory = Game->GetVariant() == EHGVariant::Ward;
 	if (bStory)
 	{
 		// Film bars, top and bottom.
 		DrawRect(FLinearColor::Black, 0.f, 0.f, W, H * 0.09f);
 		DrawRect(FLinearColor::Black, 0.f, H * 0.91f, W, H * 0.09f);
-	}
-
-	if (Game->WhiteOut > 0.f)
-	{
-		// The operation room's light, taking the whole picture.
-		DrawRect(FLinearColor(1.f, 1.f, 1.f, Game->WhiteOut), 0.f, 0.f, W, H);
 	}
 
 	if (Game->IsOver())

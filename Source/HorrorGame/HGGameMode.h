@@ -183,6 +183,13 @@ private:
 	UPROPERTY()
 	TObjectPtr<class UAudioComponent> HeartBed;
 
+	/** A faint light on each of their faces, like the one on the doctor who follows. */
+	UPROPERTY()
+	TArray<TObjectPtr<class UPointLightComponent>> StaffLights;
+
+	/** Hangs a small cold light, off to begin with, in front of a person's face. */
+	class UPointLightComponent* AddFaceLight(AActor* Person);
+
 	bool bCorridor = false;
 	bool bCorridorDone = false;
 	float CorridorTimer = 0.f;

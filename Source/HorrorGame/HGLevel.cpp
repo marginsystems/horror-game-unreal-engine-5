@@ -937,7 +937,8 @@ void AHGLevel::BuildWard()
 			Drab(FVector(HallNear - T * 0.5f, Mid, High * 0.5f), FVector(T, Stretch, High), Cold, false);
 			// The beam over the joint with the stretch before.
 			Drab(FVector((HallNear + HallFar) * 0.5f, From + Stretch * i, High - 6.f), FVector(HallFar - HallNear, 26, 64), FLinearColor(0.12f, 0.13f, 0.14f), false);
-			HallLamp(Mid, High, bLast ? 2600.f : 2100.f, 560.f, false);
+			// The higher the ceiling, the stronger the lamp and the further it has to reach to find the floor.
+			HallLamp(Mid, High, (bLast ? 2600.f : 2100.f) * FMath::Pow(High / H, 1.5f), High + 320.f, false);
 
 			const float Grow = 1.f + 0.07f * i;
 			const float DoorWide = 92.f, DoorTall = 208.f * Grow;
