@@ -3,11 +3,12 @@
 Written 2026-11-17 while making "Mom". State now:
 
 - **Done:** the mother is a MetaHuman: character asset `/HorrorPrivate/MetaHumans/Mom/Mom`, rigged
-  and assembled into `/HorrorPrivate/MetaHumans/Mom/BP_Mom` (body, face, hair, clothes; 475 MB
-  with the shared `Common` folder). The ward spawns `BP_Mom`, plays the mannequin idle on her
-  `Body` and turns her towards the child and, now and then, the door.
-- **Not done:** 1990s clothes and shoes (Epic ships one outfit), a softer face, longer hair, a
-  head-only glance instead of a whole-body turn, and the same for the doctors.
+  and assembled into `/HorrorPrivate/MetaHumans/Mom/BP_Mom` (body, face, hair, clothes). The ward
+  spawns `BP_Mom`, plays the mannequin idle on her `Body` and turns her towards the child and,
+  now and then, the door. She wears a sweater, jeans and flats and has long straight hair with
+  a fringe, all free MetaHuman packages from Fab (see "Clothes and hair from Fab" below).
+- **Not done:** a softer face (it is in shadow under the fringe and reads stern), a head-only
+  glance instead of a whole-body turn, and the same for the doctors.
 
 Helper used below: `Scripts/mcp.py call call_tool '{"toolset_name":..., "tool_name":..., "arguments":{...}}' 20000`.
 Toolset names: `E` = `metahuman_toolset.metahuman.MetaHumanToolset` (Epic's),
@@ -156,3 +157,53 @@ Hair items are in `/MetaHumanCharacter/Optional/Grooms/Bindings/Hair/` (`WI_Hair
    spawn it, find the skeletal mesh component named `Body`, `PlayAnimation`. The body faces
    along the actor's +Y, so take 90 degrees off the yaw to face a point.
    See `AHGGameMode::PopulateWard` and `TickMom`.
+
+## Clothes and hair from Fab, with no editor window (run 2026-11-17, worked)
+
+Fab sells and gives away MetaHuman packages (`.mhpkg`): outfits that resize to any MetaHuman
+body, and grooms. Epic's own free set (Sweater, Jeans, Flats, T Shirt Variants and more, "MHC
+Web App to Parametric Clothing Set") is listed for UE 5.7 and works in 5.8. Everything below
+runs in the Python commandlet, so no editor opens.
+
+1. Download the `.mhpkg` files into one folder. They are Fab Standard License: the imported
+   assets go in the private plugin only.
+2. Import them. A `.mhpkg` is a zip of `.uasset` files with a manifest, and the engine has a
+   factory for it, so an ordinary `AssetImportTask` works:
+
+   ```bash
+   bash -c 'source Scripts/env.sh; HG_SOURCE=<folder> "$UE_ROOT/Engine/Binaries/Mac/UnrealEditor-Cmd" "$PROJECT" -run=pythonscript -script="$PROJECT_DIR/Scripts/import_metahuman_packages.py" -unattended -nosplash -nullrhi -abslog=<log>'
+   ```
+
+   Each package lands in `/HorrorPrivate/MetaHumans/Wardrobe/<name>`; the log lines starting
+   `HGASSET` name the wardrobe item (`WI_...`) of each outfit.
+3. Dress her and assemble. `Scripts/dress_mom.py` puts the items on the character, sets their
+   colours, and with `HG_BUILD=1` saves and assembles `BP_Mom`. Without `HG_BUILD` it only
+   logs each item's adjustable parameters and changes nothing on disk.
+
+   ```bash
+   bash -c 'source Scripts/env.sh; HG_BUILD=1 "$UE_ROOT/Engine/Binaries/Mac/UnrealEditor-Cmd" "$PROJECT" -run=pythonscript -script="$PROJECT_DIR/Scripts/dress_mom.py" -unattended -nosplash -AllowCommandletRendering -RenderOffScreen -abslog=<log>'
+   ```
+
+What had to be found out:
+
+- **Several outfits at once.** The `Outfits` slot allows multiple selections, though the
+  editor's own UI does not show it: `set_single_slot_selection` for the first item, then
+  `try_add_slot_selection` for each further one. Epic's default garment is one item (T-shirt
+  and shorts), so it is replaced, not added to.
+- **A groom with no wardrobe item.** Third-party grooms come as a groom binding. Duplicate
+  Epic's `WI_Hair_L_Straight`, which carries the groom pipeline, and set its `principal_asset`
+  to the new binding (`unreal.EditorOnlyAssetReference()` with its `asset` property set).
+- **A groom with one level of detail is dropped.** Assembly at High quality starts the face at
+  LOD 1 and skips any groom not visible there, with no message: she came out bald. Giving the
+  groom more levels (`hair_groups_lod`, set with `import_text`) fixes it.
+- **Assembling twice mixes up materials.** A second assembly over the first one's output in
+  `Mom/Clothing` paired the sweater with the shoes' material. The script deletes that folder's
+  assets (all generated) before each assembly.
+- **Adding an item twice.** `try_add_item_from_wardrobe_item` adds a second copy named
+  `..._None_1` when the item is already in the character's palette; look it up first with
+  `get_item_keys_for_wardrobe_item`.
+- **In a commandlet the asset registry has not scanned the plugin.** `does_asset_exist` says
+  no for an asset that is on disk; `load_asset` finds it.
+- **"Failed to generated pre-baked groom textures".** Logged on every commandlet assembly
+  (`TextureGraph engine is not initialised`). It bakes brows into the far face textures; the
+  assembly still succeeds and nothing visible in the ward is missing.
