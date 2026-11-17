@@ -29,6 +29,17 @@ public:
 	 */
 	void SetWrong(float Alpha) { Wrong = FMath::Clamp(Alpha, 0.f, 1.f); }
 
+	/**
+	 * Moves the mouth along with one of the voice lines (V_<Line>), from now. The shapes come from
+	 * HGLipSyncData.inl, made from the recordings by Scripts/make_lipsync.py. Returns false, and the
+	 * mouth stays still, when the line has no shapes.
+	 */
+	bool Speak(const TCHAR* Line);
+	/** Whether a line is still being said. */
+	bool IsSpeaking() const { return SpeechLine != nullptr; }
+	/** How open the jaw is for speech right now, 0 to 1. */
+	float JawOpen() const { return Mouth[0]; }
+
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 protected:
@@ -46,4 +57,11 @@ private:
 	float Blink = 0.f;
 	float NextBlink = 2.f;
 	float BlinkLeft = 0.f;
+
+	/** The line being said and how far into it: frames of six values, see HGLipSyncData.inl. */
+	const uint8* SpeechLine = nullptr;
+	int32 SpeechFrames = 0;
+	float SpeechTime = 0.f;
+	/** Jaw, funnel, purse, lips together, wide, lower lip bite: where the mouth is now, 0 to 1. */
+	float Mouth[6] = { 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
 };

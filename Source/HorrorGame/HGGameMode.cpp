@@ -466,7 +466,8 @@ void AHGGameMode::PopulateWard()
 	// The lines spoken in scenes one and two. They live with the people, in the private plugin.
 	static const TCHAR* Lines[] = { TEXT("mom_shapes"), TEXT("mom_good"), TEXT("mom_rabbit"), TEXT("mom_thanks"), TEXT("mom_doctors"),
 		TEXT("doc_ready"), TEXT("mom_lift"), TEXT("doc_take"), TEXT("doc_hush"), TEXT("doc_nearly"), TEXT("doc_here"),
-		TEXT("chair_sit"), TEXT("chair_cover"), TEXT("chair_still"), TEXT("chair_hold"), TEXT("chair_shh"), TEXT("chair_done"),
+		TEXT("chair_sit"), TEXT("chair_cover"), TEXT("chair_still"), TEXT("chair_hold"), TEXT("chair_shh"),
+		TEXT("chair_shot"), TEXT("chair_back"), TEXT("chair_stop"), TEXT("chair_grab"),
 		TEXT("esc_other_where"), TEXT("esc_other_come"), TEXT("esc_other_there"), TEXT("esc_woman_time"), TEXT("esc_woman_hear"), TEXT("esc_woman_there"),
 		TEXT("esc_caught"), TEXT("mom_where"), TEXT("mom_found") };
 	for (const TCHAR* Line : Lines)
@@ -488,7 +489,8 @@ void AHGGameMode::PopulateWard()
 	static const TCHAR* CorridorSounds[] = { TEXT("step_hard_1"), TEXT("step_hard_2"), TEXT("hall_low"), TEXT("heart"), TEXT("hall_voices"), TEXT("cart"), TEXT("op_door"),
 		TEXT("tray"), TEXT("glove"), TEXT("cloth"), TEXT("instrument"), TEXT("chair_creak"), TEXT("ring"),
 		TEXT("escape_drone"), TEXT("spotted"), TEXT("caught"),
-		TEXT("child_cry"), TEXT("child_whimper"), TEXT("child_breath"), TEXT("lamp_die"), TEXT("radio") };
+		TEXT("child_cry"), TEXT("child_whimper"), TEXT("child_breath"), TEXT("lamp_die"), TEXT("radio"),
+		TEXT("needle"), TEXT("struggle"), TEXT("slip") };
 	for (const TCHAR* Name : CorridorSounds)
 	{
 		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/X_%s.X_%s"), Name, Name);
@@ -545,6 +547,10 @@ AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, floa
 		{
 			Mesh->SetAnimInstanceClass(UHGPersonAnim::StaticClass());
 			OutAnim = Cast<UHGPersonAnim>(Mesh->GetAnimInstance());
+			if (OutAnim)
+			{
+				OutAnim->SetStill(PersonIdle);
+			}
 		}
 		else if (Mesh->GetName() == TEXT("Face"))
 		{
@@ -644,6 +650,154 @@ FVector AHGGameMode::PersonPoint(const AActor* Person, float Ahead, float Left, 
 	return Person->GetActorLocation() + Axes.GetUnitAxis(EAxis::X) * Ahead - Axes.GetUnitAxis(EAxis::Y) * Left + FVector(0.f, 0.f, Up);
 }
 
+FVector AHGGameMode::BodyBob(const AActor* Person, float Dt)
+{
+	// How far her chest has moved from where it usually is, in her own body's space: the rise and
+	// sway of each step. Whatever is held against it moves with it, the child's eyes included.
+	TArray<USkeletalMeshComponent*> Meshes;
+	Person->GetComponents(Meshes);
+	for (const USkeletalMeshComponent* Mesh : Meshes)
+	{
+		if (Mesh->GetName() != TEXT("Body"))
+		{
+			continue;
+		}
+		const FVector Now = Mesh->GetBoneLocation(TEXT("spine_05"), EBoneSpaces::ComponentSpace);
+		FVector& Usual = BobUsual.FindOrAdd(Person, Now);
+		Usual = FMath::VInterpTo(Usual, Now, Dt, 1.2f);
+		// A held child's head rides most of that, not all: his own neck takes up the rest.
+		return Mesh->GetComponentTransform().TransformVectorNoScale(Now - Usual) * 0.6f;
+	}
+	return FVector::ZeroVector;
+}
+
+namespace
+{
+	/** A spring towards a target: quick, with a little give, and never a jump from one frame to the next. */
+	void HGSpring(float& Value, float& Speed, float Target, float Dt, float Stiffness)
+	{
+		const float Damping = 2.f * FMath::Sqrt(Stiffness) * 0.78f;
+		const float Step = FMath::Min(Dt, 1.f / 30.f);
+		Speed += (Stiffness * (Target - Value) - Damping * Speed) * Step;
+		Value += Speed * Step;
+	}
+
+	USkeletalMeshComponent* BodyOf(const AActor* Person)
+	{
+		TArray<USkeletalMeshComponent*> Meshes;
+		Person->GetComponents(Meshes);
+		for (USkeletalMeshComponent* Mesh : Meshes)
+		{
+			if (Mesh->GetName() == TEXT("Body"))
+			{
+				return Mesh;
+			}
+		}
+		return nullptr;
+	}
+}
+
+float AHGGameMode::TimeNow() const
+{
+	return GetWorld()->GetTimeSeconds();
+}
+
+void AHGGameMode::Mouth(UHGFaceAnim* Face, const TCHAR* Line)
+{
+	if (Face)
+	{
+		Face->Speak(Line);
+	}
+}
+
+void AHGGameMode::MakeChairProps()
+{
+	// What the second doctor holds, and the mask over her mouth. Plain shapes on her bones: they are
+	// only ever seen for a moment, close, under a cloth, in a bad light.
+	AActor* Second = WardDoctors[1];
+	USkeletalMeshComponent* Body = BodyOf(Second);
+	if (!Body)
+	{
+		return;
+	}
+	auto Part = [Second, Body](TArray<TObjectPtr<UStaticMeshComponent>>& Into, FName Bone, const TCHAR* Shape, const FVector& At, const FRotator& Turn, const FVector& Scale, const FLinearColor& Colour, bool bShown)
+	{
+		UStaticMeshComponent* Piece = HG::AddShape(Second, Body, Shape, FVector::ZeroVector, Scale, Colour, 0.f, false, FRotator::ZeroRotator);
+		Piece->AttachToComponent(Body, FAttachmentTransformRules::KeepRelativeTransform, Bone);
+		Piece->SetRelativeLocationAndRotation(At, Turn);
+		Piece->SetRelativeScale3D(Scale);
+		Piece->SetCastShadow(false);
+		Piece->SetVisibility(bShown);
+		Into.Add(Piece);
+	};
+	const FLinearColor Steel(0.62f, 0.64f, 0.67f), Dark(0.28f, 0.29f, 0.31f), Glass(0.86f, 0.89f, 0.9f);
+	const FLinearColor Blood = bLessBlood ? FLinearColor(0.2f, 0.2f, 0.21f) : FLinearColor(0.28f, 0.005f, 0.01f);
+
+	// The hand's own frame: which way the fingers point from the wrist.
+	const FName Hand(TEXT("hand_r"));
+	const FTransform Wrist = Body->GetSocketTransform(Hand);
+	const FName Finger = Body->GetBoneIndex(TEXT("middle_01_r")) != INDEX_NONE ? FName(TEXT("middle_01_r")) : FName(TEXT("middle_metacarpal_r"));
+	FVector Along = Wrist.InverseTransformVectorNoScale(Body->GetSocketLocation(Finger) - Wrist.GetLocation()).GetSafeNormal();
+	if (Along.IsNearlyZero())
+	{
+		Along = FVector::XAxisVector;
+	}
+	const FRotator Lengthways = FRotationMatrix::MakeFromZ(Along).Rotator();
+
+	// A glass syringe, held needle up.
+	Part(Syringe, Hand, TEXT("Cylinder"), Along * 10.f, Lengthways, FVector(0.018f, 0.018f, 0.09f), Glass, false);
+	Part(Syringe, Hand, TEXT("Cylinder"), Along * 4.f, Lengthways, FVector(0.007f, 0.007f, 0.05f), Steel, false);
+	Part(Syringe, Hand, TEXT("Cylinder"), Along * 16.8f, Lengthways, FVector(0.0025f, 0.0025f, 0.05f), Steel, false);
+	// The instrument: a handle, a long steel shaft and a small loop at the end.
+	Part(Instrument, Hand, TEXT("Cylinder"), Along * 8.f, Lengthways, FVector(0.013f, 0.013f, 0.1f), Dark, false);
+	Part(Instrument, Hand, TEXT("Cylinder"), Along * 18.f, Lengthways, FVector(0.0045f, 0.0045f, 0.11f), Steel, false);
+	Part(Instrument, Hand, TEXT("Sphere"), Along * 24.f, Lengthways, FVector(0.024f, 0.006f, 0.032f), Steel, false);
+	// Red on the loop and on her fingers the first time he sees, and more the second.
+	Part(BloodFirst, Hand, TEXT("Sphere"), Along * 23.6f, Lengthways, FVector(0.022f, 0.012f, 0.036f), Blood, false);
+	Part(BloodFirst, Hand, TEXT("Sphere"), Along * 7.f, Lengthways, FVector(0.05f, 0.032f, 0.06f), Blood, false);
+	Part(BloodSecond, Hand, TEXT("Sphere"), Along * 19.f, Lengthways, FVector(0.009f, 0.009f, 0.07f), Blood, false);
+	Part(BloodSecond, Hand, TEXT("Sphere"), Along * 10.f, Lengthways, FVector(0.065f, 0.04f, 0.08f), Blood, false);
+
+	// The mask: over her nose and mouth, in her head's own frame, which faces the way she does.
+	const FName Head(TEXT("head"));
+	const FTransform Skull = Body->GetSocketTransform(Head);
+	const FVector Forward = Skull.InverseTransformVectorNoScale(FRotator(0.f, Second->GetActorRotation().Yaw - MomYawOffset, 0.f).Vector());
+	const FVector Up = Skull.InverseTransformVectorNoScale(FVector::UpVector);
+	const FRotator Facing = FRotationMatrix::MakeFromXZ(Forward, Up).Rotator();
+	Part(Mask, Head, TEXT("Sphere"), Forward * 7.5f - Up * 3.5f, Facing, FVector(0.09f, 0.155f, 0.115f), FLinearColor(0.5f, 0.64f, 0.62f), true);
+	Part(BloodSecond, Head, TEXT("Sphere"), Forward * 11.6f - Up * 6.f, Facing, FVector(0.02f, 0.05f, 0.035f), Blood, false);
+	UE_LOG(LogHG, Log, TEXT("HGTEST PROPS hand along=%s forward=%s up=%s"), *Along.ToCompactString(), *Forward.ToCompactString(), *Up.ToCompactString());
+}
+
+void AHGGameMode::ShowTools(EHGTools Which)
+{
+	for (UStaticMeshComponent* Piece : Syringe) { Piece->SetVisibility(Which == EHGTools::Syringe); }
+	for (UStaticMeshComponent* Piece : Instrument) { Piece->SetVisibility(Which == EHGTools::Instrument); }
+	for (UStaticMeshComponent* Piece : BloodFirst) { Piece->SetVisibility(Which == EHGTools::Instrument && BloodShown >= 1); }
+	for (UStaticMeshComponent* Piece : BloodSecond) { Piece->SetVisibility((Which == EHGTools::Instrument || Piece->GetAttachSocketName() == FName(TEXT("head"))) && BloodShown >= 2); }
+	ToolsShown = Which;
+}
+
+void AHGGameMode::ShowBlood(int32 Level01)
+{
+	BloodShown = FMath::Max(BloodShown, Level01);
+	ShowTools(ToolsShown);
+}
+
+UHGFaceAnim* AHGGameMode::Doc(int32 Index) const
+{
+	return DoctorFaces.IsValidIndex(Index) ? DoctorFaces[Index].Get() : nullptr;
+}
+
+void AHGGameMode::Speak(UHGFaceAnim* Face, const TCHAR* Line, const FVector& At)
+{
+	HG::Voice(this, Line, At);
+	if (Face)
+	{
+		Face->Speak(Line);
+	}
+}
+
 bool AHGGameMode::WalkPerson(AActor* Person, UHGPersonAnim* Anim, const FVector& To, float Speed, float ClipRate, float Dt)
 {
 	const FVector At = Person->GetActorLocation();
@@ -716,7 +870,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 	const FVector Eyes = Player->EyeLocation();
 	// Where his eyes are in each pair of arms: in front of mom's chest, looking up at her; then on
 	// the doctor's shoulder, looking back the way they came.
-	const FVector MomHold = PersonPoint(WardMom, 50.f, 8.f, 122.f);
+	const FVector MomHold = PersonPoint(WardMom, 55.f, 8.f, 124.f);
 	const FVector DoctorHold = PersonPoint(Woman, 8.f, 27.f, 148.f);
 	const FVector MomFace = PersonPoint(WardMom, 9.f, 0.f, 153.f);
 	const FVector WomanFace = PersonPoint(Woman, 9.f, 0.f, 160.f);
@@ -730,7 +884,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		if (WardTimer > 10.5f)
 		{
 			Say(TEXT("\"Good morning. We're ready for him now.\""), 4.5f);
-			HG::Voice(this, TEXT("doc_ready"), WomanFace);
+			Speak(Doc(0), TEXT("doc_ready"), WomanFace);
 			Next();
 		}
 		break;
@@ -756,10 +910,10 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		if (bThere)
 		{
 			Say(TEXT("\"Come here, sweetheart. It's all right. I'll be right here.\""), 5.5f);
-			HG::Voice(this, TEXT("mom_lift"), MomFace);
+			Speak(MomFaceAnim, TEXT("mom_lift"), MomFace);
 			if (MomAnim)
 			{
-				MomAnim->SetHold(1.f);
+				MomAnim->SetHold(1.f, 0.62f);
 			}
 			if (MomFaceAnim)
 			{
@@ -784,6 +938,8 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			Player->TurnTowards(MomFace, Dt, 2.2f);
 		}
 		PersonLooks(WardMom, MomAnim, Eyes, 0.35f);
+		if (HandTimer > 0.4f && MomFaceAnim && MomFaceAnim->JawOpen() > 0.3f) { Shot(25, TEXT("ward-7a-mom-speaking.png")); }
+		if (HandTimer > 1.7f) { Shot(29, TEXT("ward-7b-lifting.png")); }
 		if (HandTimer > 4.f) { Shot(0, TEXT("ward-7-lifted.png")); }
 		if (HandTimer > 5.2f)
 		{
@@ -795,7 +951,8 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 	{
 		// She carries him to the door. He sees who is waiting there.
 		const bool bThere = WalkPerson(WardMom, MomAnim, FVector(226, 150, 0), 78.f, 0.62f, Dt);
-		Player->CarryEyesTo(MomHold + FVector(0.f, 0.f, FMath::Sin(HandTimer * 5.5f) * 1.1f));
+		// Placed after she has moved this frame, so his eyes never trail her by a step.
+		Player->CarryEyesTo(PersonPoint(WardMom, 55.f, 8.f, 124.f) + BodyBob(WardMom, Dt));
 		if (HandTimer < 1.8f || bShots)
 		{
 			Player->TurnTowards(WomanFace, Dt, 1.6f);
@@ -805,7 +962,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		if (bThere)
 		{
 			Say(TEXT("\"There we are. Come along, little one. It will all be over very soon.\""), 6.f);
-			HG::Voice(this, TEXT("doc_take"), WomanFace);
+			Speak(Doc(0), TEXT("doc_take"), WomanFace);
 			if (WomanAnim)
 			{
 				WomanAnim->SetClip(PersonIdle);
@@ -826,13 +983,19 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		FacePerson(WardMom, WomanAt, Dt, 2.5f);
 		FacePerson(Woman, WardMom->GetActorLocation(), Dt, 2.5f);
 		const float Pass = FMath::SmoothStep(0.f, 1.f, (HandTimer - 1.2f) / 2.3f);
-		Player->CarryEyesTo(FMath::Lerp(MomHold, DoctorHold, Pass));
+		Player->CarryEyesTo(FMath::Lerp(MomHold + BodyBob(WardMom, Dt), DoctorHold + BodyBob(Woman, Dt), Pass));
 		Player->SetLens(FMath::Lerp(72.f, 82.f, Pass));
 		if (MomAnim && Pass > 0.7f)
 		{
 			MomAnim->SetHold(0.f);
 		}
-		if ((HandTimer > 1.4f && HandTimer < 4.2f) || bShots)
+		if (bShots && HandTimer < 1.4f)
+		{
+			// A picture of her saying it, mouth and all.
+			Player->TurnTowards(PersonPoint(Woman, 9.f, 0.f, 148.f), Dt, 4.f);
+			if (HandTimer > 0.6f && Doc(0) && Doc(0)->JawOpen() > 0.3f) { Shot(26, TEXT("ward-8a-doctor-speaking.png")); }
+		}
+		else if ((HandTimer > 1.4f && HandTimer < 4.2f) || bShots)
 		{
 			Player->TurnTowards(MomFace, Dt, 1.5f);
 		}
@@ -872,7 +1035,21 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		{
 			WomanAnim->LookTowards(0.f, 0.f);
 		}
-		Player->CarryEyesTo(DoctorHold + FVector(0.f, 0.f, FMath::Sin(HandTimer * 6.f) * 1.3f));
+		// Placed after she has moved this frame, so his eyes never trail her by a step.
+		Player->CarryEyesTo(PersonPoint(Woman, 8.f, 27.f, 148.f) + BodyBob(Woman, Dt));
+		if ((bShots || bBot) && HandTimer > 6.f && HandTimer < 14.f && TimeNow() >= CarryLogAt)
+		{
+			// The check that her arms hold still around him: both hands, seen from his eyes, in her own frame.
+			CarryLogAt = TimeNow() + 0.1f;
+			if (const USkeletalMeshComponent* Body = BodyOf(Woman))
+			{
+				const FRotator Facing(0.f, Woman->GetActorRotation().Yaw - MomYawOffset, 0.f);
+				const FVector L = Facing.UnrotateVector(Body->GetSocketLocation(TEXT("hand_l")) - Player->EyeLocation());
+				const FVector R = Facing.UnrotateVector(Body->GetSocketLocation(TEXT("hand_r")) - Player->EyeLocation());
+				const FVector E = Facing.UnrotateVector(Player->EyeLocation() - Woman->GetActorLocation());
+				UE_LOG(LogHG, Log, TEXT("HGTEST CARRY t=%.2f left=%s right=%s eye=%s"), HandTimer, *L.ToCompactString(), *R.ToCompactString(), *E.ToCompactString());
+			}
+		}
 
 		// Her shoes on the hall floor, each with its echo coming back off the far end.
 		StepWait -= Dt;
@@ -925,7 +1102,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		{
 			bHushed = true;
 			Say(TEXT("\"Shh. Nobody is going to hurt you.\""), 4.5f);
-			HG::Voice(this, TEXT("doc_hush"), SecondFace);
+			Speak(Doc(1), TEXT("doc_hush"), SecondFace);
 		}
 
 		if (!bCorridor)
@@ -950,7 +1127,11 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			if (bShots)
 			{
 				// Pictures: mom left in the doorway, the one following, the one carrying, and the far end.
-				Player->TurnTowards(HandTimer < 4.4f ? MomFace : ((HandTimer > 8.4f && HandTimer < 10.2f) ? WomanFace : SecondFace), Dt, 2.5f);
+				// And her arms round him, twice a third of a second apart, to see that they hold still.
+				const FVector Arms = PersonPoint(Woman, 26.f, 4.f, 100.f);
+				Player->TurnTowards(HandTimer < 4.4f ? MomFace : ((HandTimer > 8.4f && HandTimer < 10.2f) ? WomanFace : ((HandTimer > 10.2f && HandTimer < 12.f) ? Arms : SecondFace)), Dt, HandTimer > 10.2f && HandTimer < 12.f ? 6.f : 2.5f);
+				if (HandTimer > 11.2f) { Shot(27, TEXT("ward-12a-arms.png")); }
+				if (HandTimer > 11.55f) { Shot(28, TEXT("ward-12b-arms.png")); }
 				if (HandTimer > 4.2f) { Shot(3, TEXT("ward-10-doorway.png")); }
 				if (HandTimer > 8.2f) { Shot(4, TEXT("ward-11-following.png")); }
 				if (HandTimer > 10.f) { Shot(5, TEXT("ward-12-carrier.png")); }
@@ -1166,7 +1347,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	{
 		bNearlySaid = true;
 		Say(TEXT("\"Nearly there now. You're being such a brave boy.\""), 5.f);
-		HG::Voice(this, TEXT("doc_nearly"), PersonPoint(Woman, 9.f, 0.f, 160.f));
+		Speak(Doc(0), TEXT("doc_nearly"), PersonPoint(Woman, 9.f, 0.f, 160.f));
 	}
 	if (!bCartHeard && WomanAt.Y > 3050.f)
 	{
@@ -1177,7 +1358,7 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	{
 		bHereSaid = true;
 		Say(TEXT("\"Here we are. In you go.\""), 4.f);
-		HG::Voice(this, TEXT("doc_here"), SecondFace);
+		Speak(Doc(1), TEXT("doc_here"), SecondFace);
 	}
 
 	// Through the door the picture burns out to white, and that is where the scene ends.
@@ -1320,11 +1501,17 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 
 	// The white clears and he sees where he is.
 	WhiteOut = 1.f - FMath::SmoothStep(1.4f, 4.4f, T);
+	if (T > 2.f && !bChairProps)
+	{
+		// Her head has settled by now, so the mask goes on square.
+		bChairProps = true;
+		MakeChairProps();
+	}
 
 	if (T > 4.6f && Once(0))
 	{
 		Say(TEXT("\"There now. You sit with me. That's it.\""), 4.5f);
-		HG::Voice(this, TEXT("chair_sit"), PersonPoint(Woman, 9.f, 0.f, 150.f));
+		Speak(Doc(0), TEXT("chair_sit"), PersonPoint(Woman, 9.f, 0.f, 150.f));
 		HG::Extra(this, TEXT("chair_creak"), Chair + FVector(0, 0, 50), 0.8f);
 	}
 	if (T > 6.2f && Once(1))
@@ -1335,117 +1522,377 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 	{
 		HG::Extra(this, TEXT("glove"), SecondFace - FVector(0, 0, 60), 0.9f);
 	}
-	if (T > 8.8f)
+	const APlayerController* PC = Cast<APlayerController>(Player->GetController());
+	const bool bAuto = bBot || bShots;
+
+	// Before the cloth: she brings the needle over, and he is given it.
+	if (T > 8.8f && ChairStage == 0)
 	{
-		// She turns from the table and comes to stand over him.
+		// She turns from the table and comes to stand over him, with the syringe held up.
 		if (WalkPerson(Second, SecondAnim, FVector(Chair.X - 78.f, Chair.Y + 12.f, 0.f), 55.f, 0.5f, Dt))
 		{
 			FacePerson(Second, Eyes, Dt, 3.f);
+			if (SecondAnim) { SecondAnim->SetPresent(1.f); }
 		}
 		PersonLooks(Second, SecondAnim, Eyes, 0.9f);
 	}
-	else if (SecondAnim)
+	else if (ChairStage == 0 && SecondAnim)
 	{
 		SecondAnim->LookTowards(0.f, -14.f);
 	}
-	if (T > 10.2f && Once(3))
+	if (T > 8.6f && Once(3))
+	{
+		ShowTools(EHGTools::Syringe);
+	}
+	if (T > 11.2f && Once(4))
+	{
+		Say(TEXT("\"Just a little scratch now. Don't look at it.\""), 4.5f);
+		Speak(Doc(1), TEXT("chair_shot"), SecondFace);
+	}
+	if (T > 14.6f && Once(5))
+	{
+		// The needle. He flinches; the room jumps.
+		HG::Extra(this, TEXT("needle"), Eyes + FVector(0, 0, -30), 1.f);
+		HG::ExtraBed(this, TEXT("child_whimper"), 0.5f);
+		Flinch = 1.f;
+		if (APlayerController* Control = Cast<APlayerController>(Player->GetController()))
+		{
+			Control->SetControlRotation(Control->GetControlRotation() + FRotator(5.f, -4.f, 0.f));
+		}
+	}
+	if (T > 16.4f && Once(6))
+	{
+		// The syringe goes back on the tray and her hand comes down.
+		ShowTools(EHGTools::None);
+		if (SecondAnim) { SecondAnim->SetPresent(0.f); }
+	}
+	if (T > 17.2f && Once(7))
 	{
 		Say(TEXT("\"We'll just cover your eyes. There.\""), 4.f);
-		HG::Voice(this, TEXT("chair_cover"), SecondFace);
+		Speak(Doc(1), TEXT("chair_cover"), SecondFace);
+	}
+	if (T > 18.4f && Once(8))
+	{
 		HG::Extra(this, TEXT("cloth"), Eyes, 1.f);
 	}
+	Flinch = FMath::FInterpTo(Flinch, 0.f, Dt, 3.f);
 
-	// The cloth comes down from above, and from here on it is all he has.
-	const float ClothOn = 12.2f;
-	ClothDown = FMath::SmoothStep(11.f, ClothOn, T);
-	if (T < 11.f)
+	// The cloth comes down from above, slowly, and from here on it is most of what he has.
+	const float ClothFrom = 18.6f, ClothOn = 22.2f;
+	if (ChairStage == 0)
 	{
-		ChairLook = Player->GetControlRotation();
+		ClothDown = FMath::SmoothStep(ClothFrom, ClothOn, T);
+		if (T < ClothFrom)
+		{
+			ChairLook = Player->GetControlRotation();
+		}
+		if (T >= ClothOn)
+		{
+			ChairStage = 1;
+			StageTimer = 0.f;
+		}
 	}
-	const float C = T - ClothOn;
-	if (C > 0.f)
+	StageTimer += Dt;
+
+	// What the cloth is doing: pulled back down over him, slipping in the struggle, or off.
+	const bool bUnder = ChairStage == 1 || ChairStage == 3 || ChairStage == 5;
+	const bool bGlimpse = ChairStage == 2 || ChairStage == 4;
+	if (ChairStage >= 1)
 	{
-		// Turning his head moves the light and the shadows about on the cloth; the stain stays where it is.
 		const FRotator Turned = (Player->GetControlRotation() - ChairLook).GetNormalized();
 		ClothShift = FVector2D(FMath::Clamp(Turned.Yaw / 50.f, -1.f, 1.f), FMath::Clamp(Turned.Pitch / 40.f, -1.f, 1.f));
-		ClothBusy = FMath::SmoothStep(0.5f, 3.f, C) * (1.f - FMath::SmoothStep(15.f, 22.f, C));
-		ClothLoom = FMath::SmoothStep(1.5f, 6.2f, C) * (1.f - 0.7f * FMath::SmoothStep(17.f, 24.f, C));
+	}
+	if (bUnder)
+	{
+		ClothTime += Dt;
+		// Each wriggle tugs it up and askew; it settles back when he stops.
+		const float Want = 1.f - 0.3f * StruggleBar;
+		ClothDown = FMath::FInterpTo(ClothDown, StageTimer < 0.9f && ChairStage > 1 ? 1.f : Want, Dt, StageTimer < 0.9f && ChairStage > 1 ? 4.f : 9.f);
+		ClothTilt = FMath::FInterpTo(ClothTilt, 0.35f * StruggleBar * StruggleLean, Dt, 8.f);
+	}
+	const float CT = ClothTime;
+	ClothBusy = FMath::SmoothStep(0.5f, 3.f, CT);
+	ClothLoom = FMath::SmoothStep(1.5f, 6.2f, CT) * (bUnder ? 1.f : 0.f);
+	ClothRed = FMath::Clamp((CT - 6.5f) / 26.f, 0.f, 1.15f);
 
-		if (C > 2.f && Once(4))
+	if (ChairStage == 1 && CT > 2.f && Once(9))
+	{
+		Say(TEXT("\"Hold still, sweetheart.\""), 3.5f);
+		Mouth(Doc(0), TEXT("chair_still"));
+		Dull(HG::VoiceBed(this, TEXT("chair_still"), 0.9f));
+	}
+	if (ChairStage == 1 && CT > 3.8f && Once(10))
+	{
+		Dull(HG::ExtraBed(this, TEXT("instrument"), 0.5f));
+		Dull(HG::ExtraBed(this, TEXT("chair_creak"), 0.45f));
+		ShowTools(EHGTools::Instrument);
+		if (SecondAnim) { SecondAnim->SetPresent(1.f); }
+	}
+	// The moment itself is the quietest: his heart drops away, a thin ringing comes up, and the red starts.
+	if (CT > 6.5f && Once(11))
+	{
+		RingBed = HG::ExtraBed(this, TEXT("ring"), 0.02f);
+		Dull(HG::ExtraBed(this, TEXT("instrument"), 0.35f));
+	}
+	if (CT > 9.f && !bChairWhimper)
+	{
+		// His own voice, small, from under the cloth.
+		bChairWhimper = true;
+		Dull(HG::ExtraBed(this, TEXT("child_whimper"), 0.5f));
+	}
+	if (ChairStage == 3 && StageTimer > 2.4f && Once(12))
+	{
+		Say(TEXT("\"Shh. Shh. Nearly done.\""), 4.f);
+		Mouth(Doc(0), TEXT("chair_shh"));
+		Dull(HG::VoiceBed(this, TEXT("chair_shh"), 0.8f));
+	}
+
+	// The struggles. The first comes once the red has started; each after a little while under it again.
+	const bool bMayStruggle = (ChairStage == 1 && CT > 9.5f) || (ChairStage == 3 && StageTimer > 6.f) || (ChairStage == 5 && StageTimer > 4.5f);
+	const int32 Needed = ChairStage == 1 ? 10 : (ChairStage == 3 ? 12 : 14);
+	if (bMayStruggle)
+	{
+		if (!bStruggleShown)
 		{
-			Say(TEXT("\"Hold still, sweetheart.\""), 3.5f);
-			Dull(HG::VoiceBed(this, TEXT("chair_still"), 0.9f));
+			bStruggleShown = true;
+			Struggle = 0.f;
+			StruggleNext = 0;
+			StruggleQuiet = 0.f;
 		}
-		if (C > 3.8f && Once(5))
+		// A then D then A: each right key is a wriggle. The wrong one, or nothing, and he is held tighter.
+		int32 Pressed = -1;
+		if (bAuto)
 		{
-			Dull(HG::ExtraBed(this, TEXT("instrument"), 0.5f));
-			Dull(HG::ExtraBed(this, TEXT("chair_creak"), 0.45f));
+			StruggleAutoWait -= Dt;
+			if (StruggleAutoWait <= 0.f && StageTimer > (ChairStage == 1 ? 1.5f : 0.6f))
+			{
+				StruggleAutoWait = 0.16f;
+				Pressed = StruggleNext;
+			}
 		}
-		if (C > 5.2f && Once(6))
+		else if (PC)
+		{
+			if (PC->WasInputKeyJustPressed(EKeys::A) || PC->WasInputKeyJustPressed(EKeys::Left) || PC->WasInputKeyJustPressed(EKeys::Gamepad_DPad_Left)) { Pressed = 0; }
+			if (PC->WasInputKeyJustPressed(EKeys::D) || PC->WasInputKeyJustPressed(EKeys::Right) || PC->WasInputKeyJustPressed(EKeys::Gamepad_DPad_Right)) { Pressed = Pressed == 0 ? -1 : 1; }
+		}
+		StruggleQuiet += Dt;
+		if (Pressed == StruggleNext)
+		{
+			Struggle = FMath::Min(1.f, Struggle + 1.f / Needed);
+			StruggleNext = 1 - StruggleNext;
+			StruggleLean = Pressed == 0 ? -1.f : 1.f;
+			StrugglePulse = 1.f;
+			StruggleQuiet = 0.f;
+			Flinch = FMath::Max(Flinch, 0.35f);
+			if (APlayerController* Control = Cast<APlayerController>(Player->GetController()))
+			{
+				Control->SetControlRotation(Control->GetControlRotation() + FRotator(FMath::FRandRange(-1.5f, 1.5f), StruggleLean * 3.f, 0.f));
+			}
+			if (TimeNow() >= StruggleSoundAt)
+			{
+				StruggleSoundAt = TimeNow() + 1.1f;
+				HG::Extra(this, TEXT("struggle"), Eyes - FVector(0, 0, 40), 0.8f, FMath::FRandRange(0.94f, 1.06f));
+			}
+			if (ChairStage == 3 && Once(13))
+			{
+				Say(TEXT("\"Stop it. Stop wriggling.\""), 3.5f);
+				Mouth(Doc(0), TEXT("chair_stop"));
+				Dull(HG::VoiceBed(this, TEXT("chair_stop"), 1.f));
+			}
+		}
+		else if (StruggleQuiet > 0.9f)
+		{
+			// She holds on: what he had gained slips away if he stops.
+			Struggle = FMath::Max(0.f, Struggle - 0.18f * Dt);
+		}
+		if (Struggle >= 1.f)
+		{
+			// Free of it, for a moment, or for good.
+			bStruggleShown = false;
+			Struggle = 0.f;
+			++ChairStage;
+			StageTimer = 0.f;
+			++Struggles;
+			if (ChairStage == 6)
+			{
+				FreeFromChair(Player);
+			}
+			else
+			{
+				HG::Extra(this, TEXT("cloth"), Eyes, 1.f);
+				if (HeartBed) { HeartBed->SetVolumeMultiplier(1.f); }
+			}
+		}
+	}
+	StrugglePulse = FMath::FInterpTo(StrugglePulse, 0.f, Dt, 6.f);
+	HGSpring(StruggleShow, StruggleShowV, bStruggleShown ? 1.f : 0.f, Dt, 120.f);
+	HGSpring(StruggleBar, StruggleBarV, bStruggleShown ? Struggle : 0.f, Dt, 260.f);
+	HGSpring(StruggleSide, StruggleSideV, static_cast<float>(StruggleNext), Dt, 420.f);
+
+	if (bGlimpse)
+	{
+		// The cloth rides up and to one side and he sees her: the mask, the instrument, what is on it.
+		// The colour comes back for it, all of it at once.
+		const float G = StageTimer;
+		const bool bBack = G > 2.6f;
+		ClothDown = FMath::FInterpTo(ClothDown, bBack ? 1.f : 0.4f, Dt, bBack ? 5.f : 11.f);
+		ClothTilt = FMath::FInterpTo(ClothTilt, bBack ? 0.f : 0.5f * StruggleLean, Dt, 8.f);
+		ChairSaturation = FMath::Lerp(0.12f, 0.95f, FMath::SmoothStep(0.f, 0.3f, G) * (1.f - FMath::SmoothStep(2.4f, 3.f, G)));
+		Player->SetSaturation(ChairSaturation);
+		if (G < 2.6f)
+		{
+			// His eyes go to what is in her hand, with her masked face just above it.
+			const USkeletalMeshComponent* Body = BodyOf(Second);
+			const FVector Hand = Body ? Body->GetSocketLocation(TEXT("hand_r")) : PersonPoint(Second, 30.f, 6.f, 118.f);
+			Player->TurnTowards(FMath::Lerp(Hand, SecondFace, 0.3f), Dt, 5.f);
+		}
+		if (ChairStage == 2 && G > 0.5f && Once(14))
+		{
+			Say(TEXT("\"No, no, no. Put it back on him.\""), 3.5f);
+			Speak(Doc(1), TEXT("chair_back"), SecondFace);
+			ShowBlood(1);
+		}
+		if (ChairStage == 4 && G > 0.4f && Once(15))
 		{
 			Say(TEXT("\"Hold him.\""), 3.f);
-			Dull(HG::VoiceBed(this, TEXT("chair_hold"), 0.9f));
+			Speak(Doc(1), TEXT("chair_hold"), SecondFace);
+			ShowBlood(2);
 		}
-		// The moment itself is the quietest: his heart drops away, a thin ringing comes up, and the red starts.
-		if (C > 6.5f && Once(7))
+		if (G > 2.6f && Once(ChairStage == 2 ? 16 : 17))
 		{
-			RingBed = HG::ExtraBed(this, TEXT("ring"), 0.02f);
-			Dull(HG::ExtraBed(this, TEXT("instrument"), 0.35f));
+			HG::Extra(this, TEXT("cloth"), Eyes, 1.f);
 		}
-		ClothRed = FMath::Clamp((C - 7.f) / 15.5f, 0.f, 1.15f);
-		if (HeartBed)
+		if (G > 3.4f)
 		{
-			const float Before = FMath::Lerp(0.45f, 0.95f, FMath::SmoothStep(0.f, 6.f, C));
-			const float After = FMath::Lerp(0.1f, 0.55f, FMath::SmoothStep(16.f, 23.f, C));
-			HeartBed->SetVolumeMultiplier(FMath::Lerp(Before, After, FMath::SmoothStep(6.3f, 7.3f, C)));
-			HeartBed->SetPitchMultiplier(FMath::Lerp(1.15f, 1.3f, FMath::SmoothStep(0.f, 6.f, C)) - 0.35f * FMath::SmoothStep(6.3f, 9.f, C));
+			ClothDown = 1.f;
+			ClothTilt = 0.f;
+			ChairLook = Player->GetControlRotation();
+			++ChairStage;
+			StageTimer = 0.f;
 		}
-		if (RingBed)
+	}
+
+	if (ChairStage == 5 && Once(18))
+	{
+		// While he cannot see, the two by the door step back to the wall to watch.
+		static const FVector Aside[] = { FVector(150, -150, 0), FVector(160, 150, 0) };
+		for (int32 i = 0; i < Staff.Num(); ++i)
 		{
-			RingBed->SetVolumeMultiplier(0.02f + 0.33f * FMath::SmoothStep(6.5f, 9.5f, C) * (1.f - FMath::SmoothStep(17.f, 22.f, C)));
+			Staff[i]->SetActorLocation(FVector(Door.X, Door.Y, 0.f) + Aside[i]);
 		}
-		if (C > 9.f && !bChairWhimper)
+	}
+
+	if (HeartBed && ChairStage < 6)
+	{
+		const float Before = FMath::Lerp(0.45f, 0.95f, FMath::SmoothStep(0.f, 6.f, CT));
+		const float Racing = bStruggleShown || bGlimpse ? 1.f : 0.f;
+		HeartBed->SetVolumeMultiplier(FMath::Lerp(Before, 1.f, Racing));
+		HeartBed->SetPitchMultiplier(FMath::Lerp(1.15f, 1.3f, FMath::SmoothStep(0.f, 6.f, CT)) + 0.15f * Racing);
+	}
+	if (RingBed)
+	{
+		RingBed->SetVolumeMultiplier(ChairStage >= 6 ? 0.f : 0.02f + 0.3f * FMath::SmoothStep(6.5f, 9.5f, CT));
+	}
+
+	if (ChairStage == 6)
+	{
+		// Off her lap and on the floor, and the door is open. They are slow to move.
+		const float F = StageTimer;
+		ClothDown = FMath::FInterpTo(ClothDown, 0.f, Dt, 7.f);
+		ClothTilt = FMath::FInterpTo(ClothTilt, 0.6f * StruggleLean, Dt, 7.f);
+		ChairSaturation = FMath::FInterpTo(ChairSaturation, 0.3f, Dt, 2.f);
+		Player->SetSaturation(ChairSaturation);
+		if (F > 0.5f && Once(19))
 		{
-			// His own voice, small, from under the cloth.
-			bChairWhimper = true;
-			Dull(HG::ExtraBed(this, TEXT("child_whimper"), 0.5f));
+			Say(TEXT("\"Catch him!\""), 2.5f);
+			Speak(Doc(1), TEXT("chair_grab"), SecondFace);
 		}
-		if (C > 12.5f && Once(8))
+		if (F > 1.f && Once(20))
 		{
-			Say(TEXT("\"Shh. Shh. Nearly done.\""), 4.f);
-			Dull(HG::VoiceBed(this, TEXT("chair_shh"), 0.8f));
+			Woman->SetActorLocation(FVector(Chair.X - 20.f, Chair.Y, 0.f));
+			if (WomanAnim)
+			{
+				WomanAnim->SetSit(0.f);
+				WomanAnim->SetHold(0.f);
+			}
+			Hint = TEXT("Run.");
+			HintUntil = TimeNow() + 4.f;
 		}
-		if (C > 21.5f && Once(9))
+		const FVector Him = Player->GetActorLocation();
+		if (F > 1.6f)
 		{
-			Say(TEXT("\"There. All finished. Good boy.\""), 4.5f);
-			Dull(HG::VoiceBed(this, TEXT("chair_done"), 0.9f));
+			// After him, at a walk: they do not run. They do not need to.
+			WalkPerson(Second, SecondAnim, FVector(Him.X, Him.Y, 0.f) + FVector(45.f, 0.f, 0.f), 70.f, 0.6f, Dt);
+			PersonLooks(Second, SecondAnim, Eyes, 0.8f);
 		}
-		BlackOut = FMath::SmoothStep(24.5f, 27.5f, C);
+		if (F > 2.4f)
+		{
+			WalkPerson(Woman, WomanAnim, FVector(Him.X, Him.Y, 0.f) + FVector(90.f, 40.f, 0.f), 60.f, 0.55f, Dt);
+			PersonLooks(Woman, WomanAnim, Eyes, 0.8f);
+		}
+		if (bAuto && F > 2.2f && Once(21))
+		{
+			Player->SetActorLocation(FVector(Door.X - 120.f, Door.Y, 60.f));
+		}
+		// Out of the door: the dark takes him, and where he comes out of it is the rest of the hospital.
+		if (Him.X < Door.X - 40.f || bRanOut)
+		{
+			bRanOut = true;
+			BlackOut = FMath::FInterpConstantTo(BlackOut, 1.f, Dt, 2.5f);
+		}
 	}
 
 	if (bShots)
 	{
-		// Pictures: the room from her lap, her arms round him, the doctor over him, then the cloth four times.
-		if (T < 5.8f) { Player->TurnTowards(FVector(Door.X, Door.Y + 40.f, 110.f), Dt, 3.f); }
-		else if (T < 8.f) { Player->TurnTowards(PersonPoint(Woman, 70.f, 0.f, 62.f), Dt, 3.f); }
-		else { Player->TurnTowards(SecondFace, Dt, 3.f); }
+		// Pictures: the lap, the syringe, the needle, the cloth, the two glimpses, and the floor.
+		if (ChairStage == 0)
+		{
+			if (T < 5.8f) { Player->TurnTowards(FVector(Door.X, Door.Y + 40.f, 110.f), Dt, 3.f); }
+			else if (T < 8.f) { Player->TurnTowards(PersonPoint(Woman, 70.f, 0.f, 62.f), Dt, 3.f); }
+			else if (T < 12.6f) { Player->TurnTowards(PersonPoint(Second, 30.f, 6.f, 132.f), Dt, 3.f); }
+			else { Player->TurnTowards(SecondFace, Dt, 3.f); }
+		}
 		if (T > 5.6f) { Shot(15, TEXT("ward-22-lap.png")); }
-		if (T > 7.8f) { Shot(16, TEXT("ward-23-held.png")); }
-		if (T > 10.8f) { Shot(17, TEXT("ward-24-over-him.png")); }
-		if (C > 3.2f) { Shot(18, TEXT("ward-25-cloth.png")); }
-		if (C > 6.3f) { Shot(19, TEXT("ward-26-shadow.png")); }
-		if (C > 12.f) { Shot(20, TEXT("ward-27-red.png")); }
-		if (C > 22.5f) { Shot(21, TEXT("ward-28-soaked.png")); }
+		if (T > 12.4f) { Shot(16, TEXT("ward-23-syringe.png")); }
+		if (T > 15.f) { Shot(17, TEXT("ward-24-needle.png")); }
+		if (ChairStage == 1 && Struggle > 0.45f) { Shot(18, TEXT("ward-25-struggle.png")); }
+		if (ChairStage == 2 && StageTimer > 1.4f) { Shot(19, TEXT("ward-26-glimpse.png")); }
+		if (ChairStage == 4 && StageTimer > 1.4f) { Shot(20, TEXT("ward-27-glimpse-again.png")); }
+		if (ChairStage == 6 && StageTimer > 1.8f) { Shot(21, TEXT("ward-28-free.png")); }
 	}
 
-	if (C > 28.5f && !bEscape)
+	if (bRanOut && BlackOut >= 1.f && !bEscape)
 	{
-		// End of the fourth scene. In the dark he is put somewhere to sleep it off.
+		// End of the fourth scene: he is out, and running.
 		bChairDone = true;
-		ChairCues |= (ClothDown >= 1.f && ClothRed >= 1.f) ? 1024 : 0;
+		ChairCues |= (Struggles == 3 && ClothRed > 0.f) ? (1 << 22) : 0;
 		bEscape = true;
-		UE_LOG(LogHG, Log, TEXT("HGTEST CHAIR done seconds=%d red=%.2f cues=%d"), FMath::RoundToInt32(RoundSeconds), ClothRed, ChairCues);
+		ShowTools(EHGTools::None);
+		UE_LOG(LogHG, Log, TEXT("HGTEST CHAIR done seconds=%d red=%.2f cues=%d struggles=%d"), FMath::RoundToInt32(RoundSeconds), ClothRed, ChairCues, Struggles);
 	}
+}
+
+void AHGGameMode::FreeFromChair(AHGPlayer* Player)
+{
+	// The third time he slips right out of her arms and drops to the floor, and the cloth goes with him.
+	const FVector Chair = Level->ChairSpot();
+	HG::Extra(this, TEXT("slip"), Chair + FVector(-40, 0, 30), 1.f);
+	HG::ExtraBed(this, TEXT("child_cry"), 0.45f);
+	if (RingBed)
+	{
+		RingBed->Stop();
+	}
+	if (HeartBed)
+	{
+		HeartBed->SetVolumeMultiplier(1.f);
+		HeartBed->SetPitchMultiplier(1.5f);
+	}
+	Player->SetCarried(false);
+	Player->SetActorLocation(FVector(Chair.X - 72.f, Chair.Y - 58.f, 60.f));
+	Player->LookAt(FVector(Level->OpDoorSpot().X, Level->OpDoorSpot().Y, 70.f));
+	Player->SetLens(92.f);
+	Flinch = 1.f;
+	ChairLook = Player->GetControlRotation();
 }
 
 void AHGGameMode::EveryoneWrong(AHGPlayer* Player)
@@ -1594,7 +2041,7 @@ void AHGGameMode::BeginEscape(AHGPlayer* Player)
 		MomFaceAnim->SetSad(0.85f);
 	}
 
-	// And him, standing by the bed he woke on, on his own feet again.
+	// And him, on his own feet by a bed: where the run from the chair ended, or where he woke.
 	Player->SetCarried(false);
 	Player->SetCrawlAllowed(true);
 	Player->SetActorLocation(Corner + FVector(250, 190, 60));
@@ -1664,7 +2111,7 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 		{
 			if (!bSecond)
 			{
-				HG::Voice(this, TEXT("esc_woman_hear"), Head);
+				Speak(Doc(0), TEXT("esc_woman_hear"), Head);
 				Say(TEXT("\"I can hear you.\""), 3.f);
 			}
 			S.CallWait = FMath::FRandRange(13.f, 20.f);
@@ -1677,7 +2124,7 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 		S.State = 4;
 		S.Target = Kept(Him);
 		HG::ExtraBed(this, TEXT("spotted"), 0.7f);
-		HG::Voice(this, bSecond ? TEXT("esc_other_there") : TEXT("esc_woman_there"), Head);
+		Speak(Doc(S.Doctor), bSecond ? TEXT("esc_other_there") : TEXT("esc_woman_there"), Head);
 		Say(bSecond ? TEXT("\"There he is.\"") : TEXT("\"There you are.\""), 3.f);
 	}
 
@@ -1772,7 +2219,7 @@ void AHGGameMode::TickSearcher(FHGSearcher& S, float Dt, AHGPlayer* Player)
 			S.CallWait = FMath::FRandRange(14.f, 21.f);
 			const bool bFirst = FMath::RandBool();
 			const TCHAR* Line = bSecond ? (bFirst ? TEXT("esc_other_where") : TEXT("esc_other_come")) : TEXT("esc_woman_time");
-			HG::Voice(this, Line, Head);
+			Speak(Doc(S.Doctor), Line, Head);
 			if (Apart < 1000.f)
 			{
 				Say(bSecond ? (bFirst ? TEXT("\"Where are you, little one?\"") : TEXT("\"Come out now. We're not finished.\"")) : TEXT("\"Sweetheart? It's time to come back.\""), 4.f);
@@ -1819,7 +2266,8 @@ void AHGGameMode::TickEscape(float Dt, AHGPlayer* Player)
 	// He comes round in the dark.
 	if (CaughtTimer < 0.f)
 	{
-		BlackOut = 1.f - FMath::SmoothStep(1.f, 4.2f, T);
+		// He comes round in the dark, or, if he ran from the chair, comes out of it still running.
+		BlackOut = bRanOut ? 1.f - FMath::SmoothStep(0.2f, 1.6f, T) : 1.f - FMath::SmoothStep(1.f, 4.2f, T);
 	}
 	if (Before <= 4.5f && T > 4.5f)
 	{
@@ -1929,7 +2377,7 @@ void AHGGameMode::TickEscape(float Dt, AHGPlayer* Player)
 		if (MomCallWait <= 0.f)
 		{
 			MomCallWait = FMath::FRandRange(11.f, 15.f);
-			HG::Voice(this, TEXT("mom_where"), DoorAt + FVector(60, 0, 40));
+			Speak(MomFaceAnim, TEXT("mom_where"), DoorAt + FVector(60, 0, 40));
 			if (ToDoor < 950.f)
 			{
 				Say(TEXT("\"Sweetheart? Where are you?\""), 3.5f);
@@ -2097,7 +2545,7 @@ void AHGGameMode::TickEnding(float Dt, AHGPlayer* Player)
 	EndingTimer += Dt;
 	const float T = EndingTimer;
 	const FVector Eyes = Player->EyeLocation();
-	const FVector MomHold = PersonPoint(WardMom, 50.f, 8.f, 122.f);
+	const FVector MomHold = PersonPoint(WardMom, 55.f, 8.f, 124.f);
 	const FVector MomFace = PersonPoint(WardMom, 9.f, 0.f, 153.f);
 	auto Snap = [this](int32 Bit, const TCHAR* Name)
 	{
@@ -2133,7 +2581,7 @@ void AHGGameMode::TickEnding(float Dt, AHGPlayer* Player)
 			MomFaceAnim->SetSad(0.45f);
 		}
 		Say(TEXT("\"There you are. Oh, there you are. I've got you. I've got you.\""), 8.f);
-		HG::Voice(this, TEXT("mom_found"), MomFace);
+		Speak(MomFaceAnim, TEXT("mom_found"), MomFace);
 	}
 
 	// The dark lets go of him: the drone and his heart die away, the colour and the birds come back.
@@ -2158,7 +2606,7 @@ void AHGGameMode::TickEnding(float Dt, AHGPlayer* Player)
 			EndLift = 0.f;
 			if (MomAnim)
 			{
-				MomAnim->SetHold(1.f);
+				MomAnim->SetHold(1.f, 0.62f);
 			}
 		}
 	}
@@ -2324,7 +2772,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 			MomFaceAnim->SetSad(0.55f);
 		}
 		Say(TEXT("\"It's all right. The doctors are only going to help you.\""), 6.f);
-		HG::Voice(this, TEXT("mom_doctors"), MomSpot + FVector(0, 0, 150));
+		Speak(MomFaceAnim, TEXT("mom_doctors"), MomSpot + FVector(0, 0, 150));
 	}
 	if (WardStep == 10)
 	{
@@ -2370,7 +2818,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 		if (RoundSeconds > 2.5f)
 		{
 			Say(TEXT("\"Put the shapes in the box, sweetheart.\""), 7.f);
-			HG::Voice(this, TEXT("mom_shapes"), MomSpot + FVector(0, 0, 150));
+			Speak(MomFaceAnim, TEXT("mom_shapes"), MomSpot + FVector(0, 0, 150));
 			WardStep = 1;
 		}
 		break;
@@ -2378,7 +2826,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 		if (WardSorter && WardSorter->Filled >= 3)
 		{
 			Say(TEXT("\"That's it. Good boy.\""), 4.f);
-			HG::Voice(this, TEXT("mom_good"), MomSpot + FVector(0, 0, 150));
+			Speak(MomFaceAnim, TEXT("mom_good"), MomSpot + FVector(0, 0, 150));
 			WardTimer = 0.f;
 			WardStep = 2;
 		}
@@ -2391,7 +2839,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 			if (WardRabbit)
 			{
 				Say(TEXT("\"Now bring me your rabbit, love.\""), 7.f);
-				HG::Voice(this, TEXT("mom_rabbit"), MomSpot + FVector(0, 0, 150));
+				Speak(MomFaceAnim, TEXT("mom_rabbit"), MomSpot + FVector(0, 0, 150));
 				WardStep = 3;
 			}
 			else
@@ -2404,7 +2852,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 		if (WardRabbit && Player->HeldToy() != WardRabbit && FVector::Dist2D(WardRabbit->GetActorLocation(), MomSpot) < 170.f)
 		{
 			Say(TEXT("\"Thank you, my darling. I've got him.\""), 4.f);
-			HG::Voice(this, TEXT("mom_thanks"), MomSpot + FVector(0, 0, 150));
+			Speak(MomFaceAnim, TEXT("mom_thanks"), MomSpot + FVector(0, 0, 150));
 			WardTimer = 0.f;
 			WardStep = 4;
 		}
@@ -2460,12 +2908,12 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 		const bool bCorridorGood = bCorridorDone && LampsOut >= Level->HallLampAlong().Num() - 2 && StaffWalking == 3;
 		UE_LOG(LogHG, Log, TEXT("HGTEST CORRIDOR %s staged=%d lamps=%d staff=%d door=%.2f"), (!bStaged || bCorridorGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, LampsOut, StaffWalking, OpDoorOpen);
 		// The chair passes when the cloth came down, the red reached all of it, and every cue in the scene went off.
-		const bool bChairGood = bChairDone && ChairCues == 2047;
+		const bool bChairGood = bChairDone && ChairCues == (1 << 23) - 1;
 		UE_LOG(LogHG, Log, TEXT("HGTEST CHAIR %s staged=%d cloth=%.2f red=%.2f cues=%d"), (!bStaged || bChairGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, ClothDown, ClothRed, ChairCues);
 		// The escape passes when crawling, hiding, the lure, being caught, being carried back and the door all worked, and he reached her.
 		const bool bEscapeGood = EscBotPassed == 63 && bEndingDone && ClosingPage >= 3;
 		UE_LOG(LogHG, Log, TEXT("HGTEST ESCAPE %s staged=%d worked=%d catches=%d ending=%d page=%d"), (!bStaged || bEscapeGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, EscBotPassed, Catches, bEndingDone ? 1 : 0, ClosingPage);
-		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && bChairGood && bEscapeGood && Player->IsCarried() && VoicesFound == 26 && CorridorSoundsFound == 21));
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && bChairGood && bEscapeGood && Player->IsCarried() && VoicesFound == 29 && CorridorSoundsFound == 24));
 		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}
@@ -3220,8 +3668,9 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 		const FVector2D Hand(0.36f + 0.12f * FMath::Sin(Now * 1.7f) - 0.16f * Shift.X, 0.74f + 0.06f * FMath::Cos(Now * 1.3f) + 0.14f * Shift.Y);
 		const FVector2D Other(0.7f + 0.07f * FMath::Sin(Now * 0.9f + 2.f) - 0.16f * Shift.X, 0.68f + 0.05f * FMath::Sin(Now * 1.1f) + 0.14f * Shift.Y);
 		const float Soak = Game->ClothRed * 1.08f;
-		// It comes down from the top with a soft lower edge.
-		const float Edge = Game->ClothDown * 1.3f - 0.15f;
+		// It comes down from the top with a soft lower edge; pulled askew, that edge rides up on one side.
+		const float Edge0 = Game->ClothDown * 1.3f - 0.15f;
+		const float Tilt = Game->ClothTilt;
 		const FLinearColor Fresh = Game->bLessBlood ? FLinearColor(0.3f, 0.3f, 0.32f) : FLinearColor(0.66f, 0.035f, 0.03f);
 		const FLinearColor Deep = Game->bLessBlood ? FLinearColor(0.16f, 0.16f, 0.18f) : FLinearColor(0.3f, 0.f, 0.01f);
 		for (int32 Y = 0; Y < CH; ++Y)
@@ -3252,6 +3701,7 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 					const float Rim = FMath::Exp(-FMath::Square((Wet - Soak + 0.03f) / 0.025f));
 					Colour *= 1.f - 0.3f * Rim;
 				}
+				const float Edge = Edge0 - Tilt * (U - 0.5f) * 0.8f;
 				const float Alpha = 1.f - FMath::SmoothStep(Edge - 0.15f, Edge, V);
 				ClothPixels[Y * CW + X] = FColor(
 					static_cast<uint8>(FMath::Clamp(Colour.R, 0.f, 1.f) * 255.f), static_cast<uint8>(FMath::Clamp(Colour.G, 0.f, 1.f) * 255.f),
@@ -3314,6 +3764,11 @@ void AHGHUD::DrawHUD()
 	if (Game->ClothDown > 0.f)
 	{
 		DrawCloth(Game, W, H, Now);
+	}
+	if (Game->Flinch > 0.01f)
+	{
+		// A jolt goes through the picture: dark for an instant, then back.
+		DrawRect(FLinearColor(0.08f, 0.f, 0.f, 0.32f * Game->Flinch), 0.f, 0.f, W, H);
 	}
 	if (Game->BlackOut > 0.f)
 	{
@@ -3404,6 +3859,24 @@ void AHGHUD::DrawHUD()
 		{
 			const float Alpha = FMath::Clamp(Game->HintUntil - Now, 0.f, 1.f);
 			Centered(Game->Hint, H * 0.845f, 1.05f * S, FLinearColor(Dim.R, Dim.G, Dim.B, Alpha));
+		}
+		if (Game->StruggleShow > 0.01f)
+		{
+			// Struggle: the two keys, the wanted one lit, and a thin line for how close he is to slipping it.
+			// Everything here is sprung in the game mode, so the light moves across rather than jumping.
+			const float Show = FMath::Clamp(Game->StruggleShow, 0.f, 1.f);
+			const float Side = FMath::Clamp(Game->StruggleSide, 0.f, 1.f);
+			const float Y = H * 0.6f + (1.f - Show) * 14.f * S;
+			const float Gap = 46.f * S;
+			const float KeyScale = 2.4f * S;
+			const float Lift = 5.f * S * Game->StrugglePulse;
+			const float AWidth = Measure(TEXT("A"), KeyScale, FaceLight), DWidth = Measure(TEXT("D"), KeyScale, FaceLight);
+			Write(TEXT("A"), FLinearColor(1.f, 1.f, 1.f, Show * FMath::Lerp(0.95f, 0.28f, Side)), W * 0.5f - Gap - AWidth * 0.5f, Y - Lift * (1.f - Side), KeyScale, FaceLight);
+			Write(TEXT("D"), FLinearColor(1.f, 1.f, 1.f, Show * FMath::Lerp(0.28f, 0.95f, Side)), W * 0.5f + Gap - DWidth * 0.5f, Y - Lift * Side, KeyScale, FaceLight);
+			const float LineW = 150.f * S, LineY = Y + 64.f * S;
+			DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.16f * Show), W * 0.5f - LineW * 0.5f, LineY, LineW, 2.f * S);
+			DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.75f * Show), W * 0.5f - LineW * 0.5f, LineY, LineW * FMath::Clamp(Game->StruggleBar, 0.f, 1.f), 2.f * S);
+			Centered(TEXT("struggle"), LineY + 14.f * S, 1.f * S, FLinearColor(Dim.R, Dim.G, Dim.B, 0.7f * Show));
 		}
 		return;
 	}

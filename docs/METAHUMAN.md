@@ -16,15 +16,19 @@ Written 2026-11-17 while making "Mom". State now:
   Clothes and hair are free MetaHuman packages from Fab (see "Clothes and hair from Fab" below).
   The bodies are moved by `UHGPersonAnim` (`Source/HorrorGame/HGPersonAnim.h`): one looping
   clip, played in place, with the neck and head turned on top of it. It can also fold the arms
-  up to carry a child (`SetHold`) and draw out the neck and head (`SetWrong`).
+  up to carry a child (`SetHold`; the arms then keep the idle clip's first frame, so a walk does
+  not swing arms that have a child in them), raise the right hand with something in it
+  (`SetPresent`) and draw out the neck and head (`SetWrong`).
   The faces are moved by `UHGFaceAnim` (`Source/HorrorGame/HGFaceAnim.h`). A MetaHuman head is
   its own mesh with its own animation step; the stock one (`ABP_Face`) only follows the body
   and leaves every expression control at zero, so everyone looked blank. Ours follows the body
   the same way (the engine's copy-pose node, run by hand) and then sets RigLogic's raw
   controls by name (`CTRL_expressions_mouthCornerPullL` and so on), which the head mesh's
   post-process step `ABP_Face_PostProcess` turns into skin. That gives mom a soft smile, a sad
-  one, and blinking, and gives the doctors the look they take on in scene two.
-- **Not done:** the doctors' masks, caps and head mirrors, and a real white coat (Fab has no
+  one, and blinking, and gives the doctors the look they take on in scene two. `Speak(line)`
+  moves the jaw and lips with a voice line, from the mouth tracks `Scripts/make_lipsync.py`
+  makes out of the recordings (whisper.cpp word timings plus loudness).
+- **Not done:** caps and head mirrors, a real mask (the second doctor's surgical mask in the chair is a plain shape on her head bone), and a real white coat (Fab has no
   free one for MetaHumans; the paid ones are $10 to $21). Walking is one clip slid along the
   floor, so feet slip a little. The carrying arms are two bones turned by hand, not a real
   carrying animation. Beards and eyebrows glitter under the hall lamps (strand hair

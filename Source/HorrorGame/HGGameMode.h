@@ -49,6 +49,9 @@ struct FHGSearcher
  * -HGBot plays the round by itself and quits (a logic check); -HGBot -HGCatch checks the monster
  * catches a player who stands still; -HGShots saves screenshots and quits.
  */
+/** What the second doctor has in her hand in the chair scene. */
+enum class EHGTools : uint8 { None, Syringe, Instrument };
+
 UCLASS()
 class AHGGameMode : public AGameModeBase
 {
@@ -105,6 +108,18 @@ public:
 	float ClothLoom = 0.f;
 	float ClothBusy = 0.f;
 	FVector2D ClothShift = FVector2D::ZeroVector;
+	/** How far the cloth has been pulled askew, -1 to 1: its lower edge rides up on one side. */
+	float ClothTilt = 0.f;
+	/** A jolt: the needle, a wriggle, the drop to the floor. 1 at the moment, easing away. */
+	float Flinch = 0.f;
+	/**
+	 * The struggle prompt, all sprung so nothing jumps: how much it is showing, how full the bar is,
+	 * which key is wanted next (0 is A, 1 is D, in between while it moves), and a beat on each wriggle.
+	 */
+	float StruggleShow = 0.f;
+	float StruggleBar = 0.f;
+	float StruggleSide = 0.f;
+	float StrugglePulse = 0.f;
 	/** The picture going to black, from 0 to 1. */
 	float BlackOut = 0.f;
 	/** A line of help at the foot of the picture, and when it goes. */
@@ -350,6 +365,49 @@ private:
 	/** Moves a person a step towards To, on the walk clip. True once they are there and standing. */
 	bool WalkPerson(AActor* Person, UHGPersonAnim* Anim, const FVector& To, float Speed, float ClipRate, float Dt);
 	void FacePerson(AActor* Person, const FVector& Point, float Dt, float Speed) const;
+	/** Plays a voice line at a place and moves the speaker's mouth with it (when there is a face to move). */
+	void Speak(UHGFaceAnim* Face, const TCHAR* Line, const FVector& At);
+	/** The face of one of the two doctors, or null. */
+	UHGFaceAnim* Doc(int32 Index) const;
+	/** How far a person's chest has moved off its usual place this frame, in the world: what a held child rides on. */
+	FVector BodyBob(const AActor* Person, float Dt);
+	TMap<const AActor*, FVector> BobUsual;
+	float TimeNow() const;
+	/** Moves a face's mouth with a line played some other way (through a wall, under the cloth). */
+	void Mouth(UHGFaceAnim* Face, const TCHAR* Line);
+
+	// Scene four, the chair: a needle, the cloth, three struggles to get out from under it.
+	void MakeChairProps();
+	void ShowTools(EHGTools Which);
+	void ShowBlood(int32 Level01);
+	void FreeFromChair(class AHGPlayer* Player);
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Syringe;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Instrument;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> BloodFirst;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> BloodSecond;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Mask;
+	EHGTools ToolsShown = EHGTools::None;
+	int32 BloodShown = 0;
+	bool bChairProps = false;
+	/** 0 before the cloth, 1 3 5 under it, 2 4 the glimpses, 6 off her lap. */
+	int32 ChairStage = 0;
+	float StageTimer = 0.f;
+	/** Time spent under the cloth, which is what the red keeps to. */
+	float ClothTime = 0.f;
+	float ChairSaturation = 0.12f;
+	bool bStruggleShown = false;
+	float Struggle = 0.f;
+	int32 StruggleNext = 0;
+	float StruggleQuiet = 0.f;
+	float StruggleLean = 1.f;
+	float StruggleAutoWait = 0.f;
+	float StruggleSoundAt = 0.f;
+	float StruggleShowV = 0.f;
+	float StruggleBarV = 0.f;
+	float StruggleSideV = 0.f;
+	int32 Struggles = 0;
+	bool bRanOut = false;
+	float CarryLogAt = 0.f;
 	/** Turns a person's head towards Target. PitchShare is how much of the up and down they follow. */
 	void PersonLooks(const AActor* Person, UHGPersonAnim* Anim, const FVector& Target, float PitchShare) const;
 	/** A point given from where a person stands: so far ahead of them, to their left, and up. */

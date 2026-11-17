@@ -64,8 +64,8 @@ can only look.
 | 1 | The ward | Sits on the floor with toys at a small child's eye height. Mom is in the room. Learns to look, move and pick things up through play: a shape sorter (circle, triangle, square) and one more small task. | Bright, warm, high contrast, colourful like a child's room. |
 | 2 | The handover | Doctors come to the door. Mom lifts him, gives a small sad smile and hands him over. He is carried out looking back at her over the doctor's shoulder. He cries for her. Looking only. | The colour drains with every step away from her. |
 | 3 | The corridor | Carried on down a hallway that is too long. The ceiling climbs, the doors grow and their handles rise out of reach. The lamps go out behind him one by one. The people standing in the hall have the doctors' faces, and fall in behind once he has passed. The doctor who was following goes ahead and holds open a door on the left: a white room and a chair. Looking only. | Long, echoing, too big. |
-| 4 | The chair | Held on a doctor's lap. Cloth goes over the eyes: the screen is fabric with light behind it, voices are muffled, red soaks slowly into the white. Nothing is shown directly. | The worst moment, and the quietest. |
-| 5 | The escape | He gets away. Small and fast. Runs and crawls through the hospital looking for mom while the doctors look for him. | The same building, now wrong: longer, darker, lights failing. |
+| 4 | The chair | Held on a doctor's lap. First a needle ("just a little scratch"). Then, slowly, cloth goes over the eyes: the screen is fabric with light behind it, voices are muffled, red soaks slowly into the white. He struggles, A and D in turn, three times. Twice the cloth slips and for a moment he sees the other doctor over him, masked, a bloody instrument in her hand, before they pull it back down. The third time he slides off the lap onto the floor, and the door is open. Nothing done to him is shown. | The worst moment, and the quietest, until he fights. |
+| 5 | The escape | He runs out of that door and gets away. Small and fast. Runs and crawls through the hospital looking for mom while the doctors look for him. | The same building, now wrong: longer, darker, lights failing. |
 | 6 | Mom | He finds her. The colour comes back. It ends. | Relief. |
 
 After the ending, the text of "It was not unusual" is shown to the player, with the sources.
@@ -116,7 +116,9 @@ Decided: the game is aimed at players of 16 and over.
 ## Voices
 
 Everyone speaks English, with ordinary American accents. Mom has lines in the ward; the
-doctors will have a few, said gently, which is worse.
+doctors have a few, said gently, which is worse. Mouths move with the words: each recording's
+word timings and loudness become mouth shapes (`Scripts/make_lipsync.py`, which writes
+`Source/HorrorGame/HGLipSyncData.inl`), so lips close on m, b and p and round on o.
 
 ## The clock
 
@@ -131,7 +133,7 @@ to the second.
 
 1. The ward room and the shape sorter, at child height. (Built.)
 2. The handover and the corridor, one unbroken carried walk. (Built.)
-3. The chair, done with cloth, sound and colour only. (Built.)
+3. The chair, done with cloth, sound and colour, and three struggles to get out from under it. (Built.)
 4. The escape: crawling, hiding, doctors that search. (Built, in its own small set of rooms: a
    side room, a long ward of beds, a corridor with a nurses' counter. Hiding in cupboards, crying
    that gives him away, and wriggling free are not in yet; being caught carries him back to where he last got to.)

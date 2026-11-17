@@ -30,8 +30,22 @@ public:
 	/** The yaw the head has actually reached, which lags behind what was asked for. */
 	float HeadYaw() const { return Yaw; }
 
-	/** 1 brings both forearms up and across the chest, the way a small child is carried; 0 lets them hang. */
-	void SetHold(float Alpha) { WantHold = FMath::Clamp(Alpha, 0.f, 1.f); }
+	/**
+	 * 1 brings both forearms up and across the chest, the way a small child is carried; 0 lets them hang.
+	 * While holding, the arms keep one still pose (see SetStill) whatever the clip under them does, so
+	 * a walk does not swing the arms that have a child in them. InFold below 1 keeps the forearms
+	 * lower, under a child held face to face rather than up on a shoulder.
+	 */
+	void SetHold(float Alpha, float InFold = 1.f) { WantHold = FMath::Clamp(Alpha, 0.f, 1.f); HoldFold = InFold; }
+
+	/** The clip whose first frame gives the arms their still pose when holding: a standing idle. */
+	void SetStill(UAnimSequence* InStill) { Still = InStill; }
+
+	/**
+	 * 1 raises the right hand to chest height in front of her, forearm up, the way an instrument is
+	 * held ready; 0 lets it hang. Eased like the hold.
+	 */
+	void SetPresent(float Alpha) { WantPresent = FMath::Clamp(Alpha, 0.f, 1.f); }
 
 	/**
 	 * How far the person has stopped looking like a person, from 0 to 1: the neck draws out and the
@@ -57,6 +71,9 @@ private:
 	UPROPERTY()
 	TObjectPtr<UAnimSequence> Clip;
 
+	UPROPERTY()
+	TObjectPtr<UAnimSequence> Still;
+
 	float Rate = 1.f;
 	float Time = 0.f;
 	float WantYaw = 0.f;
@@ -65,6 +82,9 @@ private:
 	float Pitch = 0.f;
 	float WantHold = 0.f;
 	float Hold = 0.f;
+	float HoldFold = 1.f;
+	float WantPresent = 0.f;
+	float Present = 0.f;
 	float Wrong = 0.f;
 	float Sit = 0.f;
 };

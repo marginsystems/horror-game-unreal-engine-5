@@ -4,6 +4,16 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationPoseData.h"
 #include "BonePose.h"
+#include "Animation/AttributesRuntime.h"
+
+namespace
+{
+	FCompactPoseBoneIndex FindIndex(const FBoneContainer& Bones, const TCHAR* Bone)
+	{
+		const int32 MeshIndex = Bones.GetPoseBoneIndexForBoneName(FName(Bone));
+		return MeshIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(MeshIndex));
+	}
+}
 
 /** The part that runs on the animation worker thread: it only reads what PreUpdate copied in. */
 struct FHGPersonAnimProxy : public FAnimInstanceProxy
@@ -11,7 +21,10 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 	explicit FHGPersonAnimProxy(UAnimInstance* Instance) : FAnimInstanceProxy(Instance) {}
 
 	const UAnimSequence* Clip = nullptr;
+	const UAnimSequence* Still = nullptr;
 	float Time = 0.f;
+	float Present = 0.f;
+	float HoldFold = 1.f;
 	float Yaw = 0.f;
 	float Pitch = 0.f;
 	float Hold = 0.f;
@@ -23,6 +36,9 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		FAnimInstanceProxy::PreUpdate(InAnimInstance, DeltaSeconds);
 		const UHGPersonAnim* Person = CastChecked<UHGPersonAnim>(InAnimInstance);
 		Clip = Person->Clip;
+		Still = Person->Still;
+		Present = Person->Present;
+		HoldFold = Person->HoldFold;
 		Time = Person->Time;
 		Yaw = Person->Yaw;
 		Pitch = Person->Pitch;
@@ -47,11 +63,42 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		const FVector RootAt = Root.GetTranslation();
 		Root.SetTranslation(FVector(0.f, 0.f, RootAt.Z));
 
-		if (FMath::IsNearlyZero(Yaw, 0.05f) && FMath::IsNearlyZero(Pitch, 0.05f) && Hold < 0.002f && Wrong < 0.002f && Sit < 0.002f)
+		if (FMath::IsNearlyZero(Yaw, 0.05f) && FMath::IsNearlyZero(Pitch, 0.05f) && Hold < 0.002f && Present < 0.002f && Wrong < 0.002f && Sit < 0.002f)
 		{
 			return true;
 		}
 		const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
+
+		// Arms that hold something take their pose from the still clip, not from the walk under
+		// them: everything from each collarbone outwards. The torso still moves, and carries them.
+		const float StillArms = FMath::Max(Hold, Present);
+		if (StillArms > 0.002f && Still && Still != Clip)
+		{
+			FCompactPose StillPose;
+			StillPose.SetBoneContainer(&Bones);
+			FBlendedCurve StillCurve;
+			StillCurve.InitFrom(Output.Curve);
+			UE::Anim::FStackAttributeContainer StillAttributes;
+			FAnimationPoseData StillData(StillPose, StillCurve, StillAttributes);
+			Still->GetAnimationPose(StillData, FAnimExtractContext(0.0, false, {}, true));
+			const FCompactPoseBoneIndex LeftCollar = FindIndex(Bones, TEXT("clavicle_l"));
+			const FCompactPoseBoneIndex RightCollar = FindIndex(Bones, TEXT("clavicle_r"));
+			for (FCompactPoseBoneIndex Index(1); Index < Output.Pose.GetNumBones(); ++Index)
+			{
+				// Which arm, if either, this bone hangs from.
+				float Side = 0.f;
+				for (FCompactPoseBoneIndex Up = Index; Up.IsValid() && Up.GetInt() > 0; Up = Bones.GetParentBoneIndex(Up))
+				{
+					if (Up == LeftCollar) { Side = Hold; break; }
+					if (Up == RightCollar) { Side = StillArms; break; }
+				}
+				if (Side > 0.002f)
+				{
+					Output.Pose[Index].BlendWith(StillPose[Index], Side);
+				}
+			}
+		}
+
 		FCSPose<FCompactPose> Posed;
 		Posed.InitPose(Output.Pose);
 		auto Find = [&Bones](const FName& Bone)
@@ -135,8 +182,29 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 				At.SetRotation((FQuat(FVector::XAxisVector, FMath::DegreesToRadians(34.f * Hold)) * At.GetRotation()).GetNormalized());
 				Posed.SetComponentSpaceTransform(Upper, At);
 				At = Posed.GetComponentSpaceTransform(Lower);
-				const FQuat Fold(FVector::XAxisVector, FMath::DegreesToRadians(62.f * Hold));
+				const FQuat Fold(FVector::XAxisVector, FMath::DegreesToRadians(62.f * Hold * HoldFold));
 				const FQuat Inward(FVector::ZAxisVector, FMath::DegreesToRadians(42.f * Hold * Arm.Side));
+				At.SetRotation((Inward * Fold * At.GetRotation()).GetNormalized());
+				Posed.SetComponentSpaceTransform(Lower, At);
+			}
+		}
+
+		// Holding something ready to use: the right upper arm a little forward, the forearm level
+		// from the elbow, so the hand is in front of her chest and what is in it points at him.
+		if (Present > 0.002f && Hold < 0.5f)
+		{
+			const FCompactPoseBoneIndex Upper = Find(TEXT("upperarm_r"));
+			const FCompactPoseBoneIndex Lower = Find(TEXT("lowerarm_r"));
+			if (Upper.IsValid() && Lower.IsValid())
+			{
+				FTransform At = Posed.GetComponentSpaceTransform(Upper);
+				const FQuat Forward(FVector::XAxisVector, FMath::DegreesToRadians(20.f * Present));
+				const FQuat Out(FVector::YAxisVector, FMath::DegreesToRadians(-8.f * Present));
+				At.SetRotation((Out * Forward * At.GetRotation()).GetNormalized());
+				Posed.SetComponentSpaceTransform(Upper, At);
+				At = Posed.GetComponentSpaceTransform(Lower);
+				const FQuat Fold(FVector::XAxisVector, FMath::DegreesToRadians(78.f * Present));
+				const FQuat Inward(FVector::ZAxisVector, FMath::DegreesToRadians(-18.f * Present));
 				At.SetRotation((Inward * Fold * At.GetRotation()).GetNormalized());
 				Posed.SetComponentSpaceTransform(Lower, At);
 			}
@@ -179,4 +247,5 @@ void UHGPersonAnim::NativeUpdateAnimation(float DeltaSeconds)
 	Yaw = FMath::FInterpTo(Yaw, WantYaw, DeltaSeconds, 3.2f);
 	Pitch = FMath::FInterpTo(Pitch, WantPitch, DeltaSeconds, 3.2f);
 	Hold = FMath::FInterpTo(Hold, WantHold, DeltaSeconds, 2.4f);
+	Present = FMath::FInterpTo(Present, WantPresent, DeltaSeconds, 2.f);
 }

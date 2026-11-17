@@ -15,11 +15,11 @@ The story can now be played from beginning to end in rough form, about eight min
 1. **The ward.** A bright children's room at a five-year-old's eye height, toys to pick up, a shape sorter.
 2. **The handover.** At ten the doctors come. Your mother lifts you and gives you to them.
 3. **The corridor.** You are carried down a hall that is too long and grows too tall. The lamps go out behind you.
-4. **The chair.** Held on a doctor's lap, a cloth over your eyes. Light and shadow on the cloth, dulled voices, and red soaking up into the white. Nothing that is done is shown.
-5. **The escape.** Invented. You wake alone and go to find your mother: crawl under beds and a counter (Ctrl), hide, throw a toy to draw a doctor off (right click), and do not run (Shift) where they can hear. Caught, you are carried back to where you last got to.
+4. **The chair.** Held on a doctor's lap: a needle, then a cloth over your eyes. Light and shadow on the cloth, dulled voices, and red soaking up into the white. Struggle (A and D in turn): twice the cloth slips and you see what she is holding; the third time you get free and run. Nothing that is done is shown.
+5. **The escape.** Invented. Out of that room and into the hospital to find your mother: crawl under beds and a counter (Ctrl), hide, throw a toy to draw a doctor off (right click), and do not run (Shift) where they can hear. Caught, you are carried back to where you last got to.
 6. **Mom.** You find her. The colour comes back, and the closing text says what was true, with its sources.
 
-From the handover to the chair you can only look. `Scripts/play.sh ward -HGScene=4` starts at the chair
+From the handover until the struggle in the chair you can only look. `Scripts/play.sh ward -HGScene=4` starts at the chair
 and `-HGScene=5` at the escape; `-HGLessBlood` plays it without the red. The people (the mother and
 the doctors) are in a private assets plugin; without it the first scene still plays, in an empty
 room, and ends when the door opens.
