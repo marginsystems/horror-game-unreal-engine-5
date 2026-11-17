@@ -1250,7 +1250,7 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 		CardText = TEXT("THE CHAIR");
 		CardStart = GetWorld()->GetTimeSeconds();
 		Player->SetLens(84.f);
-		Player->CarryEyesTo(PersonPoint(Woman, 22.f, 0.f, 142.f));
+		Player->CarryEyesTo(PersonPoint(Woman, 38.f, 0.f, 136.f));
 		Player->LookAt(FVector(Door.X, Door.Y, 105.f));
 		if (HeartBed)
 		{
@@ -1258,7 +1258,7 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 			HeartBed->SetPitchMultiplier(1.15f);
 		}
 	}
-	Player->CarryEyesTo(PersonPoint(Woman, 22.f, 0.f, 142.f));
+	Player->CarryEyesTo(PersonPoint(Woman, 38.f, 0.f, 136.f));
 	const FVector Eyes = Player->EyeLocation();
 	const FVector ManFace = PersonPoint(Man, 9.f, 0.f, 185.f);
 	for (int32 i = 0; i < Staff.Num(); ++i)
@@ -2290,7 +2290,9 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 				const float U = (X + 0.5f) / CW, V = (Y + 0.5f) / CH;
 				const float A = FVector2D((U - 0.46f) * 1.05f, (V - 0.98f) * 0.82f).Size();
 				const float B = FVector2D((U - 0.57f) * 1.15f, (V - 0.9f) * 0.9f).Size() + 0.04f;
-				const float Blotch = 0.26f * (ClothNoise(U * 5.f, V * 5.f * 0.5625f) - 0.5f) + 0.1f * (ClothNoise(U * 15.f + 7.f, V * 15.f * 0.5625f) - 0.5f);
+				// Big uneven patches, smaller ones on those, and threads that draw it upwards faster than their neighbours.
+				const float Blotch = 0.26f * (ClothNoise(U * 5.f, V * 5.f * 0.5625f) - 0.5f) + 0.1f * (ClothNoise(U * 15.f + 7.f, V * 15.f * 0.5625f) - 0.5f)
+					+ 0.13f * (ClothNoise(U * 34.f + 3.f, V * 5.f) - 0.5f) + 0.05f * (ClothNoise(U * 70.f, V * 40.f) - 0.5f);
 				ClothWet[Y * CW + X] = FMath::Max(0.f, FMath::Min(A, B) / 0.82f + Blotch);
 			}
 		}
@@ -2306,7 +2308,7 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 			{
 				const bool bGap = (X % 4) == 0 || (Y % 4) == 0;
 				const bool bOver = ((X / 4) + (Y / 4)) % 2 == 0;
-				Threads[Y * 8 + X] = bGap ? FColor(0, 0, 0, 38) : (bOver ? FColor(255, 255, 255, 14) : FColor(0, 0, 0, 10));
+				Threads[Y * 8 + X] = bGap ? FColor(0, 0, 0, 20) : (bOver ? FColor(255, 255, 255, 9) : FColor(0, 0, 0, 5));
 			}
 		}
 		UploadPixels(Weave, Threads);
@@ -2322,7 +2324,7 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 		const FVector2D Lamp(0.52f - 0.12f * Shift.X, 0.26f + 0.12f * Shift.Y);
 		const float Loom = Game->ClothLoom, Busy = Game->ClothBusy;
 		const FVector2D Bent(0.5f + 0.05f * FMath::Sin(Now * 0.5f) - 0.16f * Shift.X, 0.62f - 0.3f * Loom + 0.14f * Shift.Y);
-		const float BentSize = 0.14f + 0.36f * Loom;
+		const float BentSize = 0.13f + 0.2f * Loom;
 		const FVector2D Hand(0.36f + 0.12f * FMath::Sin(Now * 1.7f) - 0.16f * Shift.X, 0.74f + 0.06f * FMath::Cos(Now * 1.3f) + 0.14f * Shift.Y);
 		const FVector2D Other(0.7f + 0.07f * FMath::Sin(Now * 0.9f + 2.f) - 0.16f * Shift.X, 0.68f + 0.05f * FMath::Sin(Now * 1.1f) + 0.14f * Shift.Y);
 		const float Soak = Game->ClothRed * 1.08f;
@@ -2340,14 +2342,14 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 					const float DX = U - Centre.X, DY = (V - Centre.Y) * Aspect;
 					return FMath::Exp(-(DX * DX + DY * DY) / (Size * Size));
 				};
-				float Light = 0.6f + 0.36f * Near(Lamp, 0.3f);
-				Light *= 1.f - (0.22f + 0.5f * Loom) * Near(Bent, BentSize);
-				Light *= 1.f - 0.26f * Busy * Near(Hand, 0.085f);
-				Light *= 1.f - 0.2f * Busy * Near(Other, 0.11f);
+				float Light = 0.74f + 0.25f * Near(Lamp, 0.34f);
+				Light *= 1.f - (0.14f + 0.36f * Loom) * Near(Bent, BentSize);
+				Light *= 1.f - 0.2f * Busy * Near(Hand, 0.085f);
+				Light *= 1.f - 0.15f * Busy * Near(Other, 0.11f);
 				FLinearColor Colour(Light, Light * 0.985f, Light * 0.945f);
 
 				const float Wet = ClothWet[Y * CW + X];
-				const float Stained = 1.f - FMath::SmoothStep(Soak - 0.07f, Soak + 0.015f, Wet);
+				const float Stained = 1.f - FMath::SmoothStep(Soak - 0.035f, Soak + 0.01f, Wet);
 				if (Stained > 0.f)
 				{
 					// Fresh at the spreading edge, darker where it has been longest, and the light still shows through it.
@@ -2369,11 +2371,11 @@ void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
 	FCanvasTileItem Sheet(FVector2D(0.f, 0.f), Cloth->GetResource(), FVector2D(W, H), FLinearColor::White);
 	Sheet.BlendMode = SE_BLEND_Translucent;
 	Canvas->DrawItem(Sheet);
-	// Each thread is about a pixel and a half wide, whatever the screen.
+	// Each thread is about three pixels wide, whatever the screen.
 	const float Covered = FMath::Clamp(Game->ClothDown * 1.3f - 0.3f, 0.f, 1.f);
 	if (Covered > 0.f)
 	{
-		FCanvasTileItem Threads(FVector2D(0.f, 0.f), Weave->GetResource(), FVector2D(W, H * Covered), FVector2D(0.f, 0.f), FVector2D(W / 12.f, H * Covered / 12.f), FLinearColor::White);
+		FCanvasTileItem Threads(FVector2D(0.f, 0.f), Weave->GetResource(), FVector2D(W, H * Covered), FVector2D(0.f, 0.f), FVector2D(W / 6.f, H * Covered / 6.f), FLinearColor::White);
 		Threads.BlendMode = SE_BLEND_Translucent;
 		Canvas->DrawItem(Threads);
 	}
