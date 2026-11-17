@@ -487,7 +487,8 @@ void AHGGameMode::PopulateWard()
 	// The corridor's own sounds: her shoes, the rumble, his heart, voices behind a door, a cart, the last door.
 	static const TCHAR* CorridorSounds[] = { TEXT("step_hard_1"), TEXT("step_hard_2"), TEXT("hall_low"), TEXT("heart"), TEXT("hall_voices"), TEXT("cart"), TEXT("op_door"),
 		TEXT("tray"), TEXT("glove"), TEXT("cloth"), TEXT("instrument"), TEXT("chair_creak"), TEXT("ring"),
-		TEXT("escape_drone"), TEXT("spotted"), TEXT("caught") };
+		TEXT("escape_drone"), TEXT("spotted"), TEXT("caught"),
+		TEXT("child_cry"), TEXT("child_whimper"), TEXT("child_breath"), TEXT("lamp_die"), TEXT("radio") };
 	for (const TCHAR* Name : CorridorSounds)
 	{
 		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/X_%s.X_%s"), Name, Name);
@@ -1024,6 +1025,8 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 		HG::ExtraBed(this, TEXT("hall_low"), 0.5f);
 		HeartBed = HG::ExtraBed(this, TEXT("heart"), 0.06f);
 		HG::ExtraAt(this, TEXT("hall_voices"), FVector(300, 2150, 120), 0.8f);
+		// And a radio, somewhere further down, behind a wall.
+		HG::ExtraAt(this, TEXT("radio"), FVector(300, 3950, 120), 0.9f);
 		for (AActor* Person : Staff)
 		{
 			Person->SetActorHiddenInGame(false);
@@ -1046,7 +1049,11 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 	{
 		++LampsOut;
 		LampWait = 0.85f;
-		HG::Play(this, TEXT("tick"), 0.55f, 0.55f);
+		// The lamp's own death rattle where the private assets have it; a bare click where they do not.
+		if (!HG::Extra(this, TEXT("lamp_die"), FVector(430, LampAlong[LampsOut - 1], 240), 0.9f, FMath::FRandRange(0.94f, 1.05f)))
+		{
+			HG::Play(this, TEXT("tick"), 0.55f, 0.55f);
+		}
 	}
 	for (int32 i = 0; i < LampsOut; ++i)
 	{
@@ -1149,6 +1156,12 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 		}
 	}
 
+	if (!bWhimpered && Along > 0.42f)
+	{
+		// He has stopped crying out loud by now. This is what is left.
+		bWhimpered = true;
+		HG::ExtraBed(this, TEXT("child_whimper"), 0.35f);
+	}
 	if (!bNearlySaid && WomanAt.Y > 2760.f)
 	{
 		bNearlySaid = true;
@@ -1391,6 +1404,12 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 		{
 			RingBed->SetVolumeMultiplier(0.02f + 0.33f * FMath::SmoothStep(6.5f, 9.5f, C) * (1.f - FMath::SmoothStep(17.f, 22.f, C)));
 		}
+		if (C > 9.f && !bChairWhimper)
+		{
+			// His own voice, small, from under the cloth.
+			bChairWhimper = true;
+			Dull(HG::ExtraBed(this, TEXT("child_whimper"), 0.5f));
+		}
 		if (C > 12.5f && Once(8))
 		{
 			Say(TEXT("\"Shh. Shh. Nearly done.\""), 4.f);
@@ -1524,6 +1543,7 @@ void AHGGameMode::BeginEscape(AHGPlayer* Player)
 		HeartBed = HG::ExtraBed(this, TEXT("heart"), 0.08f);
 	}
 	DroneBed = HG::ExtraBed(this, TEXT("escape_drone"), 0.4f);
+	BreathBed = HG::ExtraBed(this, TEXT("child_breath"), 0.001f);
 	for (int32 i = 0; i < Staff.Num(); ++i)
 	{
 		Staff[i]->SetActorHiddenInGame(true);
@@ -1860,6 +1880,12 @@ void AHGGameMode::TickEscape(float Dt, AHGPlayer* Player)
 		HeartBed->SetVolumeMultiplier(0.08f + 0.85f * Worst);
 		HeartBed->SetPitchMultiplier(1.f + 0.3f * Worst);
 	}
+	if (BreathBed)
+	{
+		// Under a bed he can hear himself breathe, and the nearer they are to sure, the louder it seems.
+		BreathLevel = FMath::FInterpConstantTo(BreathLevel, bHidden ? 0.3f + 0.4f * Worst : 0.f, Dt, 1.5f);
+		BreathBed->SetVolumeMultiplier(FMath::Max(0.001f, BreathLevel));
+	}
 
 	// Caught: the dark, and he is back where he had got to, with them gone back to their rounds.
 	if (CaughtTimer >= 0.f)
@@ -2114,6 +2140,7 @@ void AHGGameMode::TickEnding(float Dt, AHGPlayer* Player)
 	const float Calm = FMath::SmoothStep(0.f, 4.f, T);
 	if (HeartBed) { HeartBed->SetVolumeMultiplier(0.08f * (1.f - Calm)); }
 	if (DroneBed) { DroneBed->SetVolumeMultiplier(0.4f * (1.f - Calm)); }
+	if (BreathBed) { BreathBed->SetVolumeMultiplier(0.001f); }
 	SetWardSound(FMath::SmoothStep(2.f, 8.f, T));
 	Player->SetSaturation(FMath::Lerp(0.18f, 1.3f, FMath::SmoothStep(0.5f, 7.f, T)));
 
@@ -2438,7 +2465,7 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 		// The escape passes when crawling, hiding, the lure, being caught, being carried back and the door all worked, and he reached her.
 		const bool bEscapeGood = EscBotPassed == 63 && bEndingDone && ClosingPage >= 3;
 		UE_LOG(LogHG, Log, TEXT("HGTEST ESCAPE %s staged=%d worked=%d catches=%d ending=%d page=%d"), (!bStaged || bEscapeGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, EscBotPassed, Catches, bEndingDone ? 1 : 0, ClosingPage);
-		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && bChairGood && bEscapeGood && Player->IsCarried() && VoicesFound == 26 && CorridorSoundsFound == 16));
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && bChairGood && bEscapeGood && Player->IsCarried() && VoicesFound == 26 && CorridorSoundsFound == 21));
 		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}

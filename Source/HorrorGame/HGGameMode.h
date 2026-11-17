@@ -257,6 +257,13 @@ private:
 	UPROPERTY()
 	TObjectPtr<class UAudioComponent> DroneBed;
 
+	/** His own breathing, heard only while he is hiding. */
+	UPROPERTY()
+	TObjectPtr<class UAudioComponent> BreathBed;
+	float BreathLevel = 0.f;
+	bool bWhimpered = false;
+	bool bChairWhimper = false;
+
 	UPROPERTY()
 	TObjectPtr<AHGToy> EscapeToy;
 

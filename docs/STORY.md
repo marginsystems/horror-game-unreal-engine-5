@@ -133,6 +133,6 @@ to the second.
 2. The handover and the corridor, one unbroken carried walk. (Built.)
 3. The chair, done with cloth, sound and colour only. (Built.)
 4. The escape: crawling, hiding, doctors that search. (Built, in its own small set of rooms: a
-   side room, a long ward of beds, a corridor with a nurses' counter. Hiding in cupboards, crying,
-   and wriggling free are not in yet; being caught carries him back to where he last got to.)
+   side room, a long ward of beds, a corridor with a nurses' counter. Hiding in cupboards, crying
+   that gives him away, and wriggling free are not in yet; being caught carries him back to where he last got to.)
 5. Mom, the ending, and the closing text. (Built.)
