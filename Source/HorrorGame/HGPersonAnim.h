@@ -7,7 +7,8 @@
 class UAnimSequence;
 
 /**
- * Plays one clip on a MetaHuman body and turns the head and neck on top of it.
+ * Plays one clip on a MetaHuman body and turns the head and neck on top of it; it can also raise
+ * the arms to carry a child, and stretch the neck and face.
  *
  * The game has no animation Blueprints, and the engine's single-clip player cannot touch a bone,
  * so this small instance does both: it loops a clip in place (a walk clip does not carry the body
@@ -29,6 +30,16 @@ public:
 	/** The yaw the head has actually reached, which lags behind what was asked for. */
 	float HeadYaw() const { return Yaw; }
 
+	/** 1 brings both forearms up and across the chest, the way a small child is carried; 0 lets them hang. */
+	void SetHold(float Alpha) { WantHold = FMath::Clamp(Alpha, 0.f, 1.f); }
+
+	/**
+	 * How far the person has stopped looking like a person, from 0 to 1: the neck draws out and the
+	 * head and face lengthen with it. It is how a frightened child remembers an adult, and it is
+	 * meant to creep in too slowly to be caught happening.
+	 */
+	void SetWrong(float Alpha) { Wrong = FMath::Clamp(Alpha, 0.f, 1.f); }
+
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 protected:
@@ -46,4 +57,7 @@ private:
 	float WantPitch = 0.f;
 	float Yaw = 0.f;
 	float Pitch = 0.f;
+	float WantHold = 0.f;
+	float Hold = 0.f;
+	float Wrong = 0.f;
 };
