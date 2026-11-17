@@ -7,6 +7,7 @@
 
 class AHGLevel;
 class AHGPlayer;
+class UAudioComponent;
 class UPointLightComponent;
 class UTextRenderComponent;
 
@@ -41,6 +42,7 @@ public:
 private:
 	enum class EState : uint8 { Patrol, Investigate, Linger, Hunt, WindUp, Charge };
 
+	void BuildStandIn(const FLinearColor& Color, float Height);
 	void BuildWalker();
 	void BuildLibrarian();
 	void BuildMouth();
@@ -59,6 +61,8 @@ private:
 	void SetState(EState NewState);
 	void Shout(const TCHAR* Text, float Seconds, const FColor& Color);
 	void StrikeAPose();
+	void Footsteps();
+	void Animate(float Dt);
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> Root;
@@ -70,6 +74,13 @@ private:
 	TArray<TObjectPtr<USceneComponent>> Arms;
 
 	UPROPERTY()
+	TObjectPtr<USceneComponent> Head;
+
+	/** The Mouth's top jaw. */
+	UPROPERTY()
+	TObjectPtr<USceneComponent> Jaw;
+
+	UPROPERTY()
 	TObjectPtr<UTextRenderComponent> Bubble;
 
 	UPROPERTY()
@@ -78,6 +89,10 @@ private:
 	UPROPERTY()
 	TObjectPtr<AHGLevel> Level;
 
+	/** The Mouth's idle growl, which follows it around. */
+	UPROPERTY()
+	TObjectPtr<UAudioComponent> Voice;
+
 	EState State = EState::Patrol;
 	float StateTime = 0.f;
 	float StunLeft = 0.f;
@@ -85,6 +100,9 @@ private:
 	float RepathIn = 0.f;
 	float LingerSeconds = 0.f;
 	float Age = 0.f;
+	float StepBank = 0.f;
+	float JawAngle = 16.f;
+	FVector LastSpot = FVector::ZeroVector;
 	bool bWasObserved = false;
 	FVector NoiseLocation = FVector::ZeroVector;
 	FVector ChargeDirection = FVector::ForwardVector;

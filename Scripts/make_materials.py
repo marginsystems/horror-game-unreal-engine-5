@@ -40,3 +40,5 @@ lib.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNES
 lib.recompile_material(material)
 saved = unreal.EditorAssetLibrary.save_asset(PATH)
 unreal.log(f"HGASSET {PATH} saved={saved}")
+if not saved:
+    raise RuntimeError(f"HGASSET FAILED {PATH} could not be saved")

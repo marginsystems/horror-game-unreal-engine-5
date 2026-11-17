@@ -1,16 +1,81 @@
 #include "HGTypes.h"
 
+#include "Components/AudioComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
+#include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Modules/ModuleManager.h"
+#include "Sound/SoundAttenuation.h"
+#include "Sound/SoundBase.h"
 
 IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, HorrorGame, "HorrorGame");
 
 DEFINE_LOG_CATEGORY(LogHG);
+
+namespace
+{
+	UMaterialInterface* BaseMaterial()
+	{
+		static TWeakObjectPtr<UMaterialInterface> Base;
+		if (!Base.IsValid())
+		{
+			UMaterialInterface* Found = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_HG.M_HG"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+			if (!Found)
+			{
+				Found = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+			}
+			Base = Found;
+		}
+		return Base.Get();
+	}
+
+	/** How far a sound carries and how it dulls on the way. One setting for the whole game. */
+	USoundAttenuation* Falloff()
+	{
+		static TWeakObjectPtr<USoundAttenuation> Shared;
+		if (!Shared.IsValid())
+		{
+			USoundAttenuation* Made = NewObject<USoundAttenuation>(GetTransientPackage(), TEXT("HGFalloff"));
+			Made->AddToRoot();
+			FSoundAttenuationSettings& S = Made->Attenuation;
+			S.bAttenuate = true;
+			S.bSpatialize = true;
+			S.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+			S.AttenuationShape = EAttenuationShape::Sphere;
+			S.AttenuationShapeExtents = FVector(250.f);
+			S.FalloffDistance = 4200.f;
+			S.dBAttenuationAtMax = -42.f;
+			S.bAttenuateWithLPF = true;
+			S.LPFRadiusMin = 700.f;
+			S.LPFRadiusMax = 3600.f;
+			S.LPFFrequencyAtMin = 20000.f;
+			S.LPFFrequencyAtMax = 1400.f;
+			Shared = Made;
+		}
+		return Shared.Get();
+	}
+
+	/** "c_RRGGBB_gN" -> colour and glow. Anything else is painted mid grey. */
+	void ReadSlotName(const FString& Slot, FLinearColor& OutColor, float& OutGlow)
+	{
+		OutColor = FLinearColor(0.2f, 0.2f, 0.2f);
+		OutGlow = 0.f;
+		TArray<FString> Parts;
+		Slot.ParseIntoArray(Parts, TEXT("_"));
+		if (Parts.Num() >= 2 && Parts[0] == TEXT("c") && Parts[1].Len() == 6)
+		{
+			OutColor = FLinearColor::FromSRGBColor(FColor::FromHex(Parts[1]));
+		}
+		if (Parts.Num() >= 3 && Parts[2].StartsWith(TEXT("g")))
+		{
+			OutGlow = FCString::Atof(*Parts[2].Mid(1));
+		}
+	}
+}
 
 namespace HG
 {
@@ -72,21 +137,12 @@ namespace HG
 
 	UMaterialInstanceDynamic* Paint(UPrimitiveComponent* Comp, const FLinearColor& Color, float Glow)
 	{
-		static TWeakObjectPtr<UMaterialInterface> Base;
-		if (!Base.IsValid())
-		{
-			UMaterialInterface* Found = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_HG.M_HG"), nullptr, LOAD_NoWarn | LOAD_Quiet);
-			if (!Found)
-			{
-				Found = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-			}
-			Base = Found;
-		}
-		if (!Comp || !Base.IsValid())
+		UMaterialInterface* Base = BaseMaterial();
+		if (!Comp || !Base)
 		{
 			return nullptr;
 		}
-		UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base.Get(), Comp);
+		UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, Comp);
 		Material->SetVectorParameterValue(TEXT("Color"), Color);
 		Material->SetScalarParameterValue(TEXT("Glow"), Glow);
 		Comp->SetMaterial(0, Material);
@@ -120,6 +176,103 @@ namespace HG
 		Comp->SetRelativeLocation(RelLocation);
 		Comp->RegisterComponent();
 		Owner->AddInstanceComponent(Comp);
+		return Comp;
+	}
+
+	TConstArrayView<const TCHAR*> SoundNames()
+	{
+		static const TCHAR* Names[] = {
+			TEXT("step_1"), TEXT("step_2"), TEXT("step_3"), TEXT("pistol"), TEXT("pistol_back"), TEXT("shotgun"),
+			TEXT("chicken"), TEXT("pin"), TEXT("boom"), TEXT("light_off"), TEXT("light_on"), TEXT("smack"),
+			TEXT("pickup"), TEXT("fuse"), TEXT("power"), TEXT("caught"), TEXT("win"), TEXT("scream"), TEXT("heart"),
+			TEXT("blink"), TEXT("question"), TEXT("gary_step"), TEXT("gary_freeze"), TEXT("shush"), TEXT("heels"),
+			TEXT("squelch"), TEXT("mouth_loop"), TEXT("mouth_roar"), TEXT("bonk"),
+			TEXT("amb_clinic"), TEXT("amb_office"), TEXT("amb_mine"),
+		};
+		return Names;
+	}
+
+	USoundBase* Sound(const TCHAR* Name)
+	{
+		const FString Path = FString::Printf(TEXT("/Game/Audio/S_%s.S_%s"), Name, Name);
+		return LoadObject<USoundBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	}
+
+	void PlayAt(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume, float Pitch)
+	{
+		if (USoundBase* Found = Sound(Name))
+		{
+			UGameplayStatics::PlaySoundAtLocation(Context, Found, Location, Volume, Pitch, 0.f, Falloff());
+		}
+	}
+
+	void Play(const UObject* Context, const TCHAR* Name, float Volume, float Pitch)
+	{
+		if (USoundBase* Found = Sound(Name))
+		{
+			UGameplayStatics::PlaySound2D(Context, Found, Volume, Pitch);
+		}
+	}
+
+	UAudioComponent* LoopOn(USceneComponent* Parent, const TCHAR* Name, float Volume)
+	{
+		USoundBase* Found = Sound(Name);
+		if (!Found || !Parent)
+		{
+			return nullptr;
+		}
+		return UGameplayStatics::SpawnSoundAttached(Found, Parent, NAME_None, FVector::ZeroVector, FRotator::ZeroRotator,
+			EAttachLocation::KeepRelativeOffset, true, Volume, 1.f, 0.f, Falloff());
+	}
+
+	TConstArrayView<const TCHAR*> ModelNames()
+	{
+		static const TCHAR* Names[] = {
+			TEXT("Gary_Body"), TEXT("Gary_Head"), TEXT("Gary_Arm"),
+			TEXT("Librarian_Body"), TEXT("Librarian_Head"), TEXT("Librarian_Arm"), TEXT("Librarian_Shush"),
+			TEXT("Mouth_Top"), TEXT("Mouth_Bottom"),
+		};
+		return Names;
+	}
+
+	UStaticMesh* Model(const TCHAR* Name)
+	{
+		const FString Path = FString::Printf(TEXT("/Game/Models/SM_%s.SM_%s"), Name, Name);
+		return LoadObject<UStaticMesh>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	}
+
+	UStaticMeshComponent* AddModel(AActor* Owner, USceneComponent* Parent, const TCHAR* ModelName,
+		const FVector& RelLocation, const FRotator& RelRotation, const FVector& Scale)
+	{
+		UStaticMesh* Mesh = Model(ModelName);
+		UMaterialInterface* Base = BaseMaterial();
+		if (!Mesh || !Base)
+		{
+			return nullptr;
+		}
+		UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(Owner);
+		Comp->SetMobility(EComponentMobility::Movable);
+		Comp->SetStaticMesh(Mesh);
+		Comp->SetupAttachment(Parent);
+		Comp->SetRelativeLocation(RelLocation);
+		Comp->SetRelativeRotation(RelRotation);
+		Comp->SetRelativeScale3D(Scale);
+		Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Comp->SetCanEverAffectNavigation(false);
+		Comp->RegisterComponent();
+		Owner->AddInstanceComponent(Comp);
+
+		const TArray<FStaticMaterial>& Slots = Mesh->GetStaticMaterials();
+		for (int32 i = 0; i < Slots.Num(); ++i)
+		{
+			FLinearColor Color;
+			float Glow = 0.f;
+			ReadSlotName(Slots[i].MaterialSlotName.ToString(), Color, Glow);
+			UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, Comp);
+			Material->SetVectorParameterValue(TEXT("Color"), Color);
+			Material->SetScalarParameterValue(TEXT("Glow"), Glow);
+			Comp->SetMaterial(i, Material);
+		}
 		return Comp;
 	}
 }

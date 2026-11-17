@@ -163,11 +163,18 @@ void AHGThrown::Launch(EHGItem InItem, const FVector& Velocity)
 
 void AHGThrown::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (Item != EHGItem::Chicken || Age - LastSqueak < 0.3f || NormalImpulse.Size() < 30.f)
+	if (Age - LastSqueak < 0.3f || NormalImpulse.Size() < 30.f)
 	{
 		return;
 	}
 	LastSqueak = Age;
+	if (Item != EHGItem::Chicken)
+	{
+		// The grenade just bounces. Heavily. Unhelpfully.
+		HG::PlayAt(this, TEXT("step_2"), GetActorLocation(), 0.8f, 1.5f);
+		return;
+	}
+	HG::PlayAt(this, TEXT("chicken"), GetActorLocation(), 1.f, FMath::FRandRange(0.85f, 1.2f));
 	if (AHGGameMode* Game = GameOf(this))
 	{
 		Game->ReportNoise(GetActorLocation(), 3200.f, 3.5f);
@@ -191,6 +198,7 @@ void AHGThrown::Explode()
 	Flash->RegisterComponent();
 	FlashLeft = 0.45f;
 	Body->SetVisibility(false, true);
+	HG::PlayAt(this, TEXT("boom"), Here, 1.6f);
 
 	if (Game)
 	{

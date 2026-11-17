@@ -157,6 +157,7 @@ void AHGPlayer::FallOver()
 {
 	bDead = true;
 	GetCharacterMovement()->DisableMovement();
+	HG::Play(this, TEXT("step_3"), 1.f, 0.55f);
 }
 
 bool AHGPlayer::GiveItem(EHGItem Item)
@@ -169,6 +170,7 @@ bool AHGPlayer::GiveItem(EHGItem Item)
 	Selected = Slots.Num() - 1;
 	bPistolFlagOut = false;
 	RebuildHeld();
+	HG::Play(this, TEXT("pickup"), 0.7f);
 	if (AHGGameMode* Game = GetWorld()->GetAuthGameMode<AHGGameMode>())
 	{
 		Game->Say(FString::Printf(TEXT("%s.  %s"), HG::ItemName(Item), WarrantyLine(Item)), 5.f);
@@ -248,6 +250,7 @@ void AHGPlayer::UseItem()
 	case EHGItem::Pistol:
 		bPistolFlagOut = !bPistolFlagOut;
 		RebuildHeld();
+		HG::Play(this, bPistolFlagOut ? TEXT("pistol") : TEXT("pistol_back"), 0.9f);
 		Game->ReportNoise(GetActorLocation(), 2400.f, 2.5f);
 		Game->Say(bPistolFlagOut ? TEXT("BANG!   (it is a flag)") : TEXT("You wind the flag back in. Click."), 2.5f);
 		LastCause = TEXT("trusted the pistol");
@@ -270,6 +273,7 @@ void AHGPlayer::UseItem()
 		}
 		// The bang is heard where the confetti lands, which is where the monster goes to stare at it.
 		Game->ReportNoise(Landing, 3000.f, 5.f);
+		HG::Play(this, TEXT("shotgun"), 1.f, FMath::FRandRange(0.96f, 1.05f));
 		Game->Say(TEXT("POP!   Confetti. And a small paper horn noise."), 2.5f);
 		ShotgunReadyAt = Now + 4.f;
 		LastCause = TEXT("brought confetti to a monster fight");
@@ -285,6 +289,7 @@ void AHGPlayer::UseItem()
 			Thrown->Launch(Item, Forward * Power + FVector(0, 0, 280.f) + GetVelocity());
 		}
 		Game->Say(Item == EHGItem::Chicken ? TEXT("You throw the chicken.") : TEXT("You pull the pin and throw.  ...  Nothing happens."), 3.f);
+		HG::Play(this, Item == EHGItem::Chicken ? TEXT("blink") : TEXT("pin"), 0.9f, Item == EHGItem::Chicken ? 1.6f : 1.f);
 		LastCause = Item == EHGItem::Chicken ? TEXT("threw away their only chicken") : TEXT("was still waiting for the grenade");
 		Slots.RemoveAt(Selected);
 		Selected = Slots.Num() > 0 ? FMath::Min(Selected, Slots.Num() - 1) : INDEX_NONE;
@@ -311,6 +316,7 @@ void AHGPlayer::SmackFlashlight()
 	}
 	Game->ReportNoise(GetActorLocation(), 1700.f, 1.5f);
 	UseKick = 0.6f;
+	HG::Play(this, TEXT("smack"), 0.9f, FMath::FRandRange(0.92f, 1.1f));
 	if (bLightOn)
 	{
 		Game->Say(TEXT("You smack a working flashlight. It is unimpressed."), 2.f);
@@ -322,6 +328,7 @@ void AHGPlayer::SmackFlashlight()
 		bLightOn = true;
 		LightDiesAt = GetWorld()->GetTimeSeconds() + FMath::FRandRange(18.f, 36.f);
 		Game->Say(TEXT("It works again. For now."), 2.f);
+		HG::Play(this, TEXT("light_on"), 0.7f);
 	}
 	else
 	{
@@ -369,6 +376,7 @@ void AHGPlayer::UpdateFlashlight(float Dt, AHGGameMode* Game)
 	{
 		bLightOn = false;
 		Game->Say(TEXT("Your flashlight died.  Press F to smack it."), 4.f);
+		HG::Play(this, TEXT("light_off"), 0.8f);
 	}
 
 	float Intensity = bLightOn ? FlashlightIntensity : 0.f;
@@ -391,6 +399,15 @@ void AHGPlayer::UpdateComposure(float Dt, AHGGameMode* Game)
 	const FVector Chest = Monster ? Monster->GetActorLocation() + FVector(0, 0, 160) : FVector::ZeroVector;
 	const bool bStaring = Monster && FVector::Dist(EyeLocation(), Chest) < 2400.f && CanObserve(Chest);
 	Composure = FMath::Clamp(Composure + (bStaring ? -Dt / 4.f : Dt / 5.f), 0.f, 1.f);
+
+	// Your own pulse, louder and faster as your nerves go.
+	HeartIn -= Dt;
+	if (Composure < 0.7f && HeartIn <= 0.f)
+	{
+		const float Fear = 1.f - Composure / 0.7f;
+		HG::Play(this, TEXT("heart"), 0.35f + 0.65f * Fear, 1.f + 0.15f * Fear);
+		HeartIn = FMath::Lerp(0.95f, 0.42f, Fear);
+	}
 	if (Composure > 0.f)
 	{
 		return;
@@ -402,12 +419,14 @@ void AHGPlayer::UpdateComposure(float Dt, AHGGameMode* Game)
 		// Nobody can hold a stare forever.
 		BlinkLeft = 0.6f;
 		Game->Say(TEXT("You blinked."), 1.5f);
+		HG::Play(this, TEXT("blink"), 1.f);
 	}
 	else
 	{
 		++Screams;
 		Game->ReportNoise(GetActorLocation(), 4000.f, 2.f);
 		Game->Say(TEXT("AAAAAAAAAH!     (that was you)"), 2.5f);
+		HG::Play(this, TEXT("scream"), 0.9f, FMath::FRandRange(0.94f, 1.08f));
 		LastCause = TEXT("screamed at it, which it took personally");
 	}
 }
@@ -466,10 +485,14 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	if (StepBank > 170.f)
 	{
 		StepBank = 0.f;
+		const bool bRunning = Speed > WalkSpeed + 40.f;
 		if (!bTiptoe)
 		{
-			Game->ReportNoise(GetActorLocation(), Speed > WalkSpeed + 40.f ? 2000.f : 650.f, 2.f, true);
+			Game->ReportNoise(GetActorLocation(), bRunning ? 2000.f : 650.f, 2.f, true);
 		}
+		// You hear your own feet even when nothing else can.
+		static const TCHAR* Steps[] = { TEXT("step_1"), TEXT("step_2"), TEXT("step_3") };
+		HG::Play(this, Steps[StepCount++ % 3], bTiptoe ? 0.1f : (bRunning ? 0.7f : 0.4f), FMath::FRandRange(0.93f, 1.07f));
 	}
 
 	UpdateFlashlight(DeltaSeconds, Game);

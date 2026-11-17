@@ -1,5 +1,6 @@
 #include "HGMonster.h"
 
+#include "Components/AudioComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -84,8 +85,40 @@ void AHGMonster::Setup(EHGMonster InKind, AHGLevel* InLevel)
 	Bubble->RegisterComponent();
 	AddInstanceComponent(Bubble);
 
+	LastSpot = GetActorLocation();
+	if (Kind == EHGMonster::Mouth)
+	{
+		Voice = HG::LoopOn(Root, TEXT("mouth_loop"), 0.45f);
+	}
+
 	SetState(Kind == EHGMonster::Librarian ? EState::Patrol : EState::Hunt);
 	PickPatrolGoal();
+}
+
+void AHGMonster::Footsteps()
+{
+	// Each monster is heard before it is seen, and each sounds like itself.
+	const FVector Here = GetActorLocation();
+	const float Moved = FVector::Dist2D(Here, LastSpot);
+	LastSpot = Here;
+	if (Moved <= 0.f || Moved > 300.f)
+	{
+		return;
+	}
+	StepBank += Moved;
+	const float Stride = Kind == EHGMonster::Walker ? 165.f : (Kind == EHGMonster::Librarian ? (State == EState::Investigate ? 190.f : 115.f) : 150.f);
+	if (StepBank < Stride)
+	{
+		return;
+	}
+	StepBank = 0.f;
+	const float Pitch = FMath::FRandRange(0.92f, 1.08f);
+	switch (Kind)
+	{
+	case EHGMonster::Librarian: HG::PlayAt(this, TEXT("heels"), Here, State == EState::Investigate ? 1.f : 0.6f, Pitch); break;
+	case EHGMonster::Mouth: HG::PlayAt(this, TEXT("squelch"), Here, State == EState::Charge ? 1.2f : 0.7f, Pitch * (State == EState::Charge ? 1.3f : 1.f)); break;
+	default: HG::PlayAt(this, TEXT("gary_step"), Here, 0.9f, Pitch); break;
+	}
 }
 
 void AHGMonster::MakeGlow(const FVector& RelLocation, const FLinearColor& Color, float Intensity)
@@ -103,65 +136,88 @@ void AHGMonster::MakeGlow(const FVector& RelLocation, const FLinearColor& Color,
 	AddInstanceComponent(Glow);
 }
 
+void AHGMonster::BuildStandIn(const FLinearColor& Color, float Height)
+{
+	// Only seen when Content/Models did not come down with the checkout (Git LFS not installed).
+	HG::AddShape(this, Body, TEXT("Cylinder"), FVector(0, 0, Height * 0.5f), FVector(0.5f, 0.5f, Height / 100.f), Color);
+}
+
 void AHGMonster::BuildWalker()
 {
-	const FLinearColor Skin(0.012f, 0.012f, 0.016f);
+	// A shop mannequin, modelled in Scripts/make_models.py. The pivots below match PIVOTS there.
+	if (!HG::AddModel(this, Body, TEXT("Gary_Body")))
+	{
+		BuildStandIn(FLinearColor(0.012f, 0.012f, 0.016f), 250.f);
+	}
+	Head = HG::AddPivot(this, Body, FVector(0, 0, 226));
+	HG::AddModel(this, Head, TEXT("Gary_Head"));
 	for (const float Side : { -1.f, 1.f })
 	{
-		HG::AddShape(this, Body, TEXT("Cylinder"), FVector(0, Side * 13, 66), FVector(0.13f, 0.13f, 1.32f), Skin);
-		USceneComponent* Shoulder = HG::AddPivot(this, Body, FVector(0, Side * 23, 216));
-		HG::AddShape(this, Shoulder, TEXT("Cylinder"), FVector(0, 0, -72), FVector(0.085f, 0.085f, 1.44f), Skin);
-		HG::AddShape(this, Shoulder, TEXT("Sphere"), FVector(0, 0, -148), FVector(0.16f, 0.1f, 0.22f), Skin);
+		USceneComponent* Shoulder = HG::AddPivot(this, Body, FVector(0, Side * 27, 202));
+		// One arm mesh, flipped for the other side so both thumbs point in.
+		HG::AddModel(this, Shoulder, TEXT("Gary_Arm"), FVector::ZeroVector, FRotator::ZeroRotator, FVector(1.f, Side, 1.f));
 		Arms.Add(Shoulder);
-		HG::AddShape(this, Body, TEXT("Sphere"), FVector(14.5f, Side * 6.5f, 251), FVector(0.045f), FLinearColor::White, 60.f);
 	}
-	HG::AddShape(this, Body, TEXT("Cylinder"), FVector(0, 0, 176), FVector(0.3f, 0.2f, 0.9f), Skin);
-	HG::AddShape(this, Body, TEXT("Sphere"), FVector(0, 0, 247), FVector(0.3f, 0.28f, 0.36f), Skin);
 
 	MakeGlow(FVector(40, 0, 250), FLinearColor(0.8f, 0.9f, 1.f), 40.f);
 }
 
 void AHGMonster::BuildLibrarian()
 {
-	const FLinearColor Dress(0.06f, 0.09f, 0.07f);
-	const FLinearColor Paper(0.85f, 0.8f, 0.65f);
-	HG::AddShape(this, Body, TEXT("Cone"), FVector(0, 0, 88), FVector(1.15f, 1.15f, 1.76f), Dress);
-	HG::AddShape(this, Body, TEXT("Cylinder"), FVector(0, 0, 188), FVector(0.3f, 0.36f, 0.5f), Dress);
-	// Her head is an open book, spine towards you.
-	HG::AddShape(this, Body, TEXT("Cube"), FVector(4, -15, 243), FVector(0.1f, 0.34f, 0.5f), Paper, 0.f, false, FRotator(0.f, -22.f, 0.f));
-	HG::AddShape(this, Body, TEXT("Cube"), FVector(4, 15, 243), FVector(0.1f, 0.34f, 0.5f), Paper, 0.f, false, FRotator(0.f, 22.f, 0.f));
-	HG::AddShape(this, Body, TEXT("Cube"), FVector(-6, 0, 243), FVector(0.06f, 0.1f, 0.56f), FLinearColor(0.3f, 0.04f, 0.04f));
+	if (!HG::AddModel(this, Body, TEXT("Librarian_Body")))
+	{
+		BuildStandIn(FLinearColor(0.06f, 0.09f, 0.07f), 240.f);
+	}
+	// Her head is an open book with reading glasses on it.
+	Head = HG::AddPivot(this, Body, FVector(0, 0, 220));
+	HG::AddModel(this, Head, TEXT("Librarian_Head"));
 	for (const float Side : { -1.f, 1.f })
 	{
-		USceneComponent* Shoulder = HG::AddPivot(this, Body, FVector(0, Side * 24, 205));
-		HG::AddShape(this, Shoulder, TEXT("Cylinder"), FVector(0, 0, -45), FVector(0.07f, 0.07f, 0.9f), Paper * 0.6f);
+		USceneComponent* Shoulder = HG::AddPivot(this, Body, FVector(0, Side * 24, 193));
+		// One arm hangs. The other is modelled with a finger already on its way to where her lips would be.
+		HG::AddModel(this, Shoulder, Side < 0.f ? TEXT("Librarian_Arm") : TEXT("Librarian_Shush"));
 		Arms.Add(Shoulder);
 	}
-	// One finger permanently on its way to where her lips would be.
-	Arms[1]->SetRelativeRotation(FRotator(-150.f, 0.f, -12.f));
 
 	MakeGlow(FVector(50, 0, 240), FLinearColor(0.7f, 1.f, 0.6f), 70.f);
 }
 
 void AHGMonster::BuildMouth()
 {
-	const FLinearColor Flesh(0.28f, 0.02f, 0.03f);
-	HG::AddShape(this, Body, TEXT("Sphere"), FVector(0, 0, 100), FVector(1.9f, 1.8f, 1.7f), Flesh);
-	HG::AddShape(this, Body, TEXT("Sphere"), FVector(52, 0, 100), FVector(1.25f, 1.45f, 1.3f), FLinearColor(0.005f, 0.f, 0.f));
-	const int32 Teeth = 14;
-	for (int32 i = 0; i < Teeth; ++i)
+	if (!HG::AddModel(this, Body, TEXT("Mouth_Bottom")))
 	{
-		const float Angle = 2.f * PI * i / Teeth;
-		const FVector At(98.f, FMath::Cos(Angle) * 62.f, 100.f + FMath::Sin(Angle) * 56.f);
-		const FRotator Inward(FMath::RadiansToDegrees(Angle) + 90.f, 90.f, 0.f);
-		HG::AddShape(this, Body, TEXT("Cone"), At, FVector(0.16f, 0.16f, 0.34f), FLinearColor(0.9f, 0.88f, 0.75f), 1.f, false, Inward);
+		BuildStandIn(FLinearColor(0.28f, 0.02f, 0.03f), 190.f);
 	}
-	for (const float Side : { -1.f, 1.f })
-	{
-		HG::AddShape(this, Body, TEXT("Cylinder"), FVector(-10, Side * 45, 12), FVector(0.3f, 0.3f, 0.25f), Flesh * 0.6f);
-	}
+	// The top jaw hinges at the back so it can chew.
+	Jaw = HG::AddPivot(this, Body, FVector(-60, 0, 100));
+	HG::AddModel(this, Jaw, TEXT("Mouth_Top"));
 
 	MakeGlow(FVector(130, 0, 110), FLinearColor(1.f, 0.1f, 0.05f), 260.f);
+}
+
+void AHGMonster::Animate(float Dt)
+{
+	if (Jaw)
+	{
+		// Breathing when idle, wide open for the wind-up, chewing on the way, slack when it has hit a wall.
+		float Want = 16.f + 8.f * FMath::Sin(Age * 2.4f);
+		if (StunLeft > 0.f) { Want = 27.f + 3.f * FMath::Sin(Age * 5.f); }
+		else if (State == EState::WindUp) { Want = 58.f; }
+		else if (State == EState::Charge) { Want = 32.f + 26.f * FMath::Sin(Age * 20.f); }
+		JawAngle = FMath::FInterpTo(JawAngle, Want, Dt, 14.f);
+		Jaw->SetRelativeRotation(FRotator(JawAngle, 0.f, 0.f));
+	}
+	if (Head && Kind == EHGMonster::Librarian)
+	{
+		// She listens by turning the book from side to side, and leans in when she has heard something.
+		const bool bChasing = State == EState::Investigate;
+		const FRotator Want(bChasing ? -14.f : 0.f, bChasing ? 0.f : FMath::Sin(Age * 0.9f) * 24.f, 0.f);
+		Head->SetRelativeRotation(FMath::RInterpTo(Head->GetRelativeRotation(), Want, Dt, 5.f));
+		if (Arms.Num() > 0)
+		{
+			Arms[0]->SetRelativeRotation(FRotator(FMath::Sin(Age * (bChasing ? 12.f : 3.f)) * (bChasing ? 30.f : 8.f), 0.f, 0.f));
+		}
+	}
 }
 
 void AHGMonster::SetState(EState NewState)
@@ -186,13 +242,23 @@ void AHGMonster::StrikeAPose()
 	// Caught mid-step. Whatever his arms were doing, they are doing it now.
 	for (USceneComponent* Arm : Arms)
 	{
-		Arm->SetRelativeRotation(FRotator(FMath::FRandRange(-175.f, 50.f), 0.f, FMath::FRandRange(-55.f, 55.f)));
+		// Anywhere from hanging behind him to reaching straight up, by way of reaching for you.
+		Arm->SetRelativeRotation(FRotator(FMath::FRandRange(-50.f, 150.f), 0.f, FMath::FRandRange(-40.f, 40.f)));
+	}
+	if (Head)
+	{
+		Head->SetRelativeRotation(FRotator(FMath::FRandRange(-8.f, 12.f), FMath::FRandRange(-35.f, 35.f), FMath::FRandRange(-28.f, 28.f)));
 	}
 	Body->SetRelativeRotation(FRotator(FMath::FRandRange(-6.f, 10.f), 0.f, FMath::FRandRange(-12.f, 12.f)));
+	HG::PlayAt(this, TEXT("gary_freeze"), GetActorLocation(), 0.8f, FMath::FRandRange(0.9f, 1.15f));
 }
 
 void AHGMonster::Stun(float Seconds)
 {
+	if (StunLeft <= 0.f)
+	{
+		HG::PlayAt(this, Kind == EHGMonster::Mouth ? TEXT("bonk") : TEXT("question"), GetActorLocation(), 1.2f, Kind == EHGMonster::Mouth ? 1.f : 1.35f);
+	}
 	StunLeft = FMath::Max(StunLeft, Seconds);
 	Shout(Kind == EHGMonster::Mouth ? TEXT("bonk") : TEXT("?!"), FMath::Min(Seconds, 2.5f), FColor::White);
 }
@@ -222,10 +288,12 @@ bool AHGMonster::HearNoise(const FVector& Location, float HoldSeconds, bool bFoo
 		if (Kind == EHGMonster::Librarian)
 		{
 			Shout(TEXT("SHHH!"), 1.4f, FColor(200, 255, 170));
+			HG::PlayAt(this, TEXT("shush"), GetActorLocation(), 1.3f);
 		}
 		else
 		{
 			Shout(TEXT("?"), 1.2f, FColor::White);
+			HG::PlayAt(this, TEXT("question"), GetActorLocation(), 1.f, Kind == EHGMonster::Mouth ? 0.6f : 1.f);
 		}
 	}
 	return true;
@@ -325,6 +393,7 @@ void AHGMonster::Tick(float DeltaSeconds)
 
 	Age += DeltaSeconds;
 	StateTime += DeltaSeconds;
+	Animate(DeltaSeconds);
 
 	if (Bubble && BubbleLeft > 0.f)
 	{
@@ -361,6 +430,7 @@ void AHGMonster::Tick(float DeltaSeconds)
 	case EHGMonster::Mouth: TickMouth(DeltaSeconds, Player); break;
 	default: TickWalker(DeltaSeconds, Player); break;
 	}
+	Footsteps();
 
 	const FVector Here = GetActorLocation();
 	const FVector There = Player->GetActorLocation();
@@ -405,6 +475,10 @@ void AHGMonster::TickWalker(float Dt, AHGPlayer* Player)
 
 	// He leans into it while he moves.
 	Body->SetRelativeRotation(FRotator(-8.f, 0.f, FMath::Sin(Age * 11.f) * 5.f));
+	if (Head)
+	{
+		Head->SetRelativeRotation(FRotator(8.f, 0.f, 0.f));
+	}
 	for (int32 i = 0; i < Arms.Num(); ++i)
 	{
 		Arms[i]->SetRelativeRotation(FRotator(FMath::Sin(Age * 9.f + i * PI) * 35.f, 0.f, 0.f));
@@ -501,6 +575,7 @@ void AHGMonster::TickMouth(float Dt, AHGPlayer* Player)
 			ChargeDirection = FVector(Step.X, Step.Y, 0.f);
 			SetState(EState::WindUp);
 			Shout(TEXT("!!"), 0.9f, FColor::Red);
+			HG::PlayAt(this, TEXT("mouth_roar"), Centre, 1.3f);
 			return;
 		}
 	}

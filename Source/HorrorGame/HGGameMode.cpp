@@ -1,5 +1,6 @@
 #include "HGGameMode.h"
 
+#include "Components/AudioComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -14,6 +15,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "ShaderCompiler.h"
+#include "Sound/SoundBase.h"
 #include "UnrealClient.h"
 
 AHGGameMode::AHGGameMode()
@@ -39,6 +41,21 @@ void AHGGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 
 	// Engine notices ("Preparing mesh distance fields...") have no place on a horror game's screen.
 	GEngine->bEnableOnScreenDebugMessages = false;
+
+	// Load every sound and model up front. A missing one is reported, and fails the self-test.
+	for (const TCHAR* Name : HG::SoundNames())
+	{
+		if (USoundBase* Found = HG::Sound(Name)) { KeptSounds.Add(Found); }
+		else { UE_LOG(LogHG, Warning, TEXT("HGTEST MISSING sound %s"), Name); }
+	}
+	for (const TCHAR* Name : HG::ModelNames())
+	{
+		if (UStaticMesh* Found = HG::Model(Name)) { KeptModels.Add(Found); }
+		else { UE_LOG(LogHG, Warning, TEXT("HGTEST MISSING model %s"), Name); }
+	}
+	bAssetsComplete = KeptSounds.Num() == HG::SoundNames().Num() && KeptModels.Num() == HG::ModelNames().Num();
+	UE_LOG(LogHG, Log, TEXT("HGTEST ASSETS %s sounds=%d/%d models=%d/%d"), bAssetsComplete ? TEXT("PASS") : TEXT("FAIL"),
+		KeptSounds.Num(), HG::SoundNames().Num(), KeptModels.Num(), HG::ModelNames().Num());
 
 	UWorld* World = GetWorld();
 	FActorSpawnParameters Always;
@@ -110,6 +127,13 @@ void AHGGameMode::StartPlay()
 {
 	Super::StartPlay();
 	Say(FString::Printf(TEXT("Find %d fuses. Power the exit shutter. Leave."), FusesTotal), 7.f);
+
+	// The room tone for this place, looping under everything else.
+	const FString Ambience = FString::Printf(TEXT("amb_%s"), HG::VariantKey(Variant));
+	if (USoundBase* Found = HG::Sound(*Ambience))
+	{
+		UGameplayStatics::SpawnSound2D(this, Found, 0.55f);
+	}
 }
 
 void AHGGameMode::Say(const FString& Text, float Seconds)
@@ -133,9 +157,11 @@ void AHGGameMode::ReportNoise(const FVector& Location, float Radius, float HoldS
 void AHGGameMode::CollectFuse()
 {
 	++Fuses;
+	HG::Play(this, TEXT("fuse"), 0.8f, 1.f + 0.04f * Fuses);
 	if (Fuses >= FusesTotal)
 	{
 		Level->SetExitOpen(true);
+		HG::Play(this, TEXT("power"), 0.9f);
 		Say(TEXT("That is all of them. The exit shutter has power.  Go."), 6.f);
 	}
 	else
@@ -161,6 +187,7 @@ void AHGGameMode::PlayerCaught(AHGMonster* By)
 	{
 		Player->FallOver();
 	}
+	HG::Play(this, TEXT("caught"), 1.f);
 	UE_LOG(LogHG, Log, TEXT("HGTEST CAUGHT by=%s fuses=%d/%d"), By ? By->DisplayName() : TEXT("?"), Fuses, FusesTotal);
 }
 
@@ -181,6 +208,7 @@ void AHGGameMode::PlayerDied(const FString& Cause)
 	{
 		Player->FallOver();
 	}
+	HG::Play(this, TEXT("caught"), 0.6f, 0.8f);
 	UE_LOG(LogHG, Log, TEXT("HGTEST DIED cause=%s"), *Cause);
 }
 
@@ -195,6 +223,7 @@ void AHGGameMode::Win()
 	EndLines.Add(FString::Printf(TEXT("Time on site: %d s.   Fuses: %d of %d."), FMath::RoundToInt32(RoundSeconds), Fuses, FusesTotal));
 	EndLines.Add(FString::Printf(TEXT("Weapons discharged: %d.   Monsters harmed: 0.   Screams: %d."),
 		Player ? Player->Discharges : 0, Player ? Player->Screams : 0));
+	HG::Play(this, TEXT("win"), 0.9f);
 	UE_LOG(LogHG, Log, TEXT("HGTEST WIN fuses=%d/%d seconds=%d"), Fuses, FusesTotal, FMath::RoundToInt32(RoundSeconds));
 }
 
@@ -322,8 +351,9 @@ void AHGGameMode::TickBot(float Dt, AHGPlayer* Player)
 	}
 	if (FuseIndex == Level->FuseTiles.Num() + 1)
 	{
-		const bool bGood = bWon && Fuses == FusesTotal && bLured;
-		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s won=%d fuses=%d/%d lured=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bWon ? 1 : 0, Fuses, FusesTotal, bLured ? 1 : 0);
+		const bool bGood = bWon && Fuses == FusesTotal && bLured && bAssetsComplete;
+		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s won=%d fuses=%d/%d lured=%d assets=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"),
+			bWon ? 1 : 0, Fuses, FusesTotal, bLured ? 1 : 0, bAssetsComplete ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}
 }
@@ -399,6 +429,11 @@ void AHGGameMode::TickShots(float Dt, AHGPlayer* Player)
 		break;
 	case 2:
 		Player->LookAt(Monster->GetActorLocation() + FVector(0, 0, 150));
+		if (Monster->Kind != EHGMonster::Walker)
+		{
+			// Held still for the picture, so turn it to face the camera.
+			Monster->SetActorRotation(FRotator(0.f, (Player->GetActorLocation() - Monster->GetActorLocation()).Rotation().Yaw, 0.f));
+		}
 		if (ShotTimer > 2.f) { Shoot(TEXT("2-monster")); Next(); }
 		break;
 	case 3:

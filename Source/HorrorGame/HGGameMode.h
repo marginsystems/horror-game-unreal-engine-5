@@ -9,6 +9,8 @@
 class AHGLevel;
 class AHGMonster;
 class AHGPlayer;
+class USoundBase;
+class UStaticMesh;
 
 /**
  * Runs one round: builds the place, drops the fuses, weapons and monster into it,
@@ -68,6 +70,13 @@ private:
 	UPROPERTY()
 	TObjectPtr<AActor> StartSpot;
 
+	/** Held here so the sounds and models stay loaded for the whole round. */
+	UPROPERTY()
+	TArray<TObjectPtr<USoundBase>> KeptSounds;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UStaticMesh>> KeptModels;
+
 	EHGVariant Variant = EHGVariant::Clinic;
 	bool bOver = false;
 	bool bWon = false;
@@ -75,6 +84,7 @@ private:
 	bool bShots = false;
 	bool bCatch = false;
 	bool bLured = false;
+	bool bAssetsComplete = false;
 	float WalkSeconds = 0.f;
 	FVector WalkFrom = FVector::ZeroVector;
 	FVector WalkDirection = FVector::ZeroVector;

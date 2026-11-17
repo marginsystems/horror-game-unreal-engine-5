@@ -78,6 +78,8 @@ private:
 	float ShotgunReadyAt = 0.f;
 	float BlinkLeft = 0.f;
 	float StepBank = 0.f;
+	float HeartIn = 0.f;
+	int32 StepCount = 0;
 	float UseKick = 0.f;
 	float Bob = 0.f;
 };
