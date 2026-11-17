@@ -44,6 +44,19 @@ The rooms, props and weapons are still basic shapes built in code.
 See [the game design](docs/GAME_DESIGN.md) for where it is going and [the asset list](docs/ASSETS.md)
 for free models that could replace the shapes.
 
+## Private assets
+
+The best-looking parts of the game come from asset packs whose licences allow use in a game
+but not redistribution of the raw files (most Fab packs). Those live in a private repository
+and are loaded as an Unreal plugin, `Plugins/HorrorPrivate`, when it is present:
+
+```bash
+Scripts/get-private-assets.sh
+```
+
+Without access to that repository the game still builds and runs, on the art its own scripts
+generate. With it, Gary is a rigged, animated body (Quaternius, CC0) instead of fused shapes.
+
 ## Play it
 
 You need Unreal Engine 5.8 (Epic Games Launcher), Xcode on macOS, and [Git LFS](https://git-lfs.com).
