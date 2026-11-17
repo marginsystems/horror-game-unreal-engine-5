@@ -37,6 +37,8 @@ public:
 	/** Scene one: pick up the toy being looked at, or put down or post the one being held. */
 	void Interact();
 	bool IsChild() const { return bChild; }
+	/** The camera's colour and exposure, so a cutscene camera can match it. */
+	const struct FPostProcessSettings& Look() const;
 	class AHGToy* HeldToy() const { return Held; }
 	void SmackFlashlight();
 	void SelectSlot(int32 Index);
@@ -69,6 +71,8 @@ private:
 
 	/** True in the story's first scene: a five-year-old's height, pace and hands; no flashlight, no weapons. */
 	bool bChild = false;
+	/** Degrees turned per mouse count. The minus and equals keys change it. */
+	float LookSpeed = 0.24f;
 
 	UPROPERTY()
 	TObjectPtr<USpotLightComponent> Flashlight;

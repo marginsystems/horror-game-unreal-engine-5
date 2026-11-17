@@ -24,6 +24,11 @@ public:
 	void Build(EHGVariant InVariant);
 	/** The children's ward room of the first scene: one bright room, a window, a door, a rug. */
 	void BuildWard();
+	/** Swings the ward's door: 0 shut, 1 wide open onto the hall. */
+	void SetDoorOpen(float Alpha);
+	/** Shows a time on the ward's wall clock. */
+	void SetClock(float Hours);
+	FVector ClockSpot() const { return FVector(256, -40, 232); }
 	/**
 	 * For a ready-made map: walks the floor outwards from Start, a step at a time, and remembers
 	 * every place a body can stand and which of them connect. Stairs and ramps count, so it covers
@@ -97,6 +102,15 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> ExitSign;
+
+	UPROPERTY()
+	TObjectPtr<USceneComponent> WardDoor;
+
+	UPROPERTY()
+	TObjectPtr<USceneComponent> HourHand;
+
+	UPROPERTY()
+	TObjectPtr<USceneComponent> MinuteHand;
 
 	int32 NearestSpot(const FVector& At) const;
 	bool BodyFits(const FVector& A, const FVector& B) const;

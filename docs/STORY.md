@@ -106,9 +106,19 @@ Decided: the game is aimed at players of 16 and over.
   medical procedure, blood and distress.
 - **A "less blood" setting** for players who want the story without the red.
 
-## Open
+## Voices
 
-- Whether mom and the doctors speak, and in which language.
+Everyone speaks English, with ordinary American accents. Mom has lines in the ward; the
+doctors will have a few, said gently, which is worse.
+
+## The clock
+
+There is a clock on the ward wall. It starts at four minutes to ten. Whatever the player is
+doing, at ten the door opens. Mom knows; she glances at the door, and at the clock.
+
+Beyond the door the same building has no colour in it: stained brick, bare concrete, one cold
+light a long way down the hall. Opening the door is the cut from the first half of the story
+to the second.
 
 ## Build order
 

@@ -461,6 +461,13 @@ def amb_mine(rng):
     return normalise(seamless(mix(gain(wind, 0.5), gain(rumble, 2.2), gain(drips, 0.22), gain(creak, 0.16)), 0.5), 0.55)
 
 
+def tick(rng):
+    # A wall clock: a dry little knock with a faint ring after it.
+    knock = decay(bandpass(noise(0.05, rng), 2400.0, 5.0), 110.0)
+    ring = decay(tone(0.12, 3400.0), 60.0)
+    return normalise(mix(gain(knock, 2.0), gain(ring, 0.12), silence(0.14)), 0.5)
+
+
 SOUNDS = {
     "step_1": lambda r: step(r, 92.0),
     "step_2": lambda r: step(r, 104.0),
@@ -494,6 +501,7 @@ SOUNDS = {
     "amb_clinic": amb_clinic,
     "amb_office": amb_office,
     "amb_mine": amb_mine,
+    "tick": tick,
 }
 
 

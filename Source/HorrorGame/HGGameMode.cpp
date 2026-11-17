@@ -1,5 +1,7 @@
 #include "HGGameMode.h"
 
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -21,6 +23,7 @@
 #include "InputKeyEventArgs.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "ShaderCompiler.h"
@@ -50,6 +53,17 @@ void AHGGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 	bBot = FParse::Param(FCommandLine::Get(), TEXT("HGBot"));
 	bShots = FParse::Param(FCommandLine::Get(), TEXT("HGShots"));
 	bCatch = FParse::Param(FCommandLine::Get(), TEXT("HGCatch"));
+
+	// One notch below the engine's top settings, drawn at three quarters size and scaled up: it looks
+	// the same at a glance and runs far smoother. -HGFull keeps everything at full.
+	if (!FParse::Param(FCommandLine::Get(), TEXT("HGFull")))
+	{
+		for (const TCHAR* Command : { TEXT("sg.GlobalIlluminationQuality 2"), TEXT("sg.ReflectionQuality 2"), TEXT("sg.ShadowQuality 2"),
+			TEXT("sg.PostProcessQuality 2"), TEXT("sg.EffectsQuality 2"), TEXT("r.ScreenPercentage 75") })
+		{
+			GEngine->Exec(GetWorld(), Command);
+		}
+	}
 
 	// Engine notices ("Preparing mesh distance fields...") have no place on a horror game's screen.
 	GEngine->bEnableOnScreenDebugMessages = false;
@@ -163,6 +177,10 @@ void AHGGameMode::StartPlay()
 	{
 		Say(FString::Printf(TEXT("Find %d fuses. Power the exit shutter. Leave."), FusesTotal), 7.f);
 	}
+	else if (!bBot)
+	{
+		BeginCutscene(Cast<AHGPlayer>(UGameplayStatics::GetPlayerPawn(this, 0)));
+	}
 
 	// The room tone for this place, looping under everything else.
 	const FString Ambience = FString::Printf(TEXT("amb_%s"), HG::VariantKey(Variant));
@@ -225,6 +243,7 @@ void AHGGameMode::PopulateWard()
 	{
 		AHGToy* Toy = World->SpawnActor<AHGToy>(Shape.Value, FRotator(0.f, FMath::FRandRange(0.f, 360.f), 0.f), Always);
 		Toy->SetupModel(FName(*FString(Shape.Key).ToLower()), *FString::Printf(TEXT("Toy_%s"), Shape.Key));
+		WardShapes.Add(Toy);
 	}
 
 	// Everything below comes from the private assets plugin and is simply absent without it.
@@ -280,10 +299,10 @@ void AHGGameMode::PopulateWard()
 	// Mom, standing by the bed, watching him play. Neither woman we have is good enough to show yet
 	// (one pokes through her clothes, the other does not take the animations), so she is only put in
 	// the room when asked for: -Mom=quat or -Mom=real. Without her, the rabbit task is skipped.
+	// Her voice is in the room either way, from where she would be standing.
 	FString WhichMom;
 	if (!FParse::Value(FCommandLine::Get(), TEXT("Mom="), WhichMom))
 	{
-		WardRabbit = nullptr;
 		return;
 	}
 	AActor* Mom = World->SpawnActor<AActor>(MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation(), Always);
@@ -368,21 +387,118 @@ void AHGGameMode::PopulateWard()
 	}
 }
 
+void AHGGameMode::BeginCutscene(AHGPlayer* Player)
+{
+	APlayerController* PC = Player ? Cast<APlayerController>(Player->GetController()) : nullptr;
+	if (!PC)
+	{
+		return;
+	}
+	Cine = GetWorld()->SpawnActor<ACameraActor>(FVector(-190, -250, 245), FRotator::ZeroRotator);
+	UCameraComponent* Lens = Cine->GetCameraComponent();
+	Lens->SetFieldOfView(55.f);
+	Lens->bConstrainAspectRatio = false;
+	Lens->PostProcessSettings = Player->Look();
+	Lens->PostProcessBlendWeight = 1.f;
+	PC->SetViewTarget(Cine);
+	CineLeft = CineLength;
+}
+
+void AHGGameMode::TickCutscene(float Dt, AHGPlayer* Player)
+{
+	// Two shots. A slow drift along the wall with the sun on it, high up, the way the room is remembered.
+	// Then down on the floor, creeping towards the toys, the way it was lived.
+	const float T = CineElapsed();
+	FVector From, To, LookFrom, LookTo;
+	float Along;
+	if (T < 4.5f)
+	{
+		Along = T / 4.5f;
+		From = FVector(-190, -250, 245); To = FVector(-80, -230, 236);
+		LookFrom = FVector(-90, 320, 215); LookTo = FVector(70, 320, 185);
+	}
+	else
+	{
+		Along = (T - 4.5f) / (CineLength - 4.5f);
+		From = FVector(238, -268, 20); To = FVector(150, -176, 40);
+		LookFrom = LookTo = FVector(60, -70, 14);
+	}
+	Along = FMath::SmoothStep(0.f, 1.f, Along);
+	const FVector At = FMath::Lerp(From, To, Along);
+	if (Cine)
+	{
+		Cine->SetActorLocationAndRotation(At, (FMath::Lerp(LookFrom, LookTo, Along) - At).Rotation());
+	}
+	if (bShots && ((T < 2.5f && T + Dt >= 2.5f) || (T < 7.5f && T + Dt >= 7.5f)))
+	{
+		const TCHAR* Name = T < 4.5f ? TEXT("ward-0-opening-a.png") : TEXT("ward-0-opening-b.png");
+		FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / Name, true, false);
+		UE_LOG(LogHG, Log, TEXT("HGTEST SHOT %s"), Name);
+	}
+	CineLeft -= Dt;
+	if (CineLeft <= 0.f)
+	{
+		if (APlayerController* PC = Cast<APlayerController>(Player->GetController()))
+		{
+			PC->SetViewTargetWithBlend(Player, 1.2f, VTBlend_Cubic);
+		}
+		ShotTimer = 0.f;
+	}
+}
+
 void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 {
+	// The clock on the wall runs from four minutes to ten. At ten the door opens, whatever he is doing.
+	const float ClockRate = bBot ? 16.f : 2.f;
+	const float SecondsToTen = 240.f - RoundSeconds * ClockRate;
+	Level->SetClock(10.f - FMath::Max(SecondsToTen, 0.f) / 3600.f);
+	TickBank += Dt;
+	if (TickBank >= 1.f && WardStep < 10)
+	{
+		TickBank = 0.f;
+		HG::PlayAt(this, TEXT("tick"), Level->ClockSpot(), 0.55f);
+	}
+	if (SecondsToTen <= 0.f && WardStep < 10)
+	{
+		WardStep = 10;
+		WardTimer = 0.f;
+		Say(TEXT("\"It's all right. The doctors are only going to help you.\""), 6.f);
+		HG::Voice(this, TEXT("mom_doctors"), MomSpot + FVector(0, 0, 150));
+	}
+	if (WardStep == 10)
+	{
+		// The door swings open on the hall: no colour out there, and a cold light.
+		DoorOpen = FMath::FInterpConstantTo(DoorOpen, 1.f, Dt, 0.7f);
+		Level->SetDoorOpen(FMath::SmoothStep(0.f, 1.f, DoorOpen));
+		WardTimer += Dt;
+		if (WardTimer > 7.f && !bOver)
+		{
+			bOver = true;
+			bWon = true;
+			EndTitle = TEXT("THE DOCTORS COME IN");
+			EndLines.Reset();
+			EndLines.Add(TEXT("End of the first scene."));
+			EndLines.Add(TEXT("The next one is being built."));
+			UE_LOG(LogHG, Log, TEXT("HGTEST WARD done seconds=%d"), FMath::RoundToInt32(RoundSeconds));
+		}
+		return;
+	}
+
 	switch (WardStep)
 	{
 	case 0:
-		if (RoundSeconds > 6.f)
+		if (RoundSeconds > 2.5f)
 		{
-			Say(TEXT("Put the shapes in the box."), 7.f);
+			Say(TEXT("\"Put the shapes in the box, sweetheart.\""), 7.f);
+			HG::Voice(this, TEXT("mom_shapes"), MomSpot + FVector(0, 0, 150));
 			WardStep = 1;
 		}
 		break;
 	case 1:
 		if (WardSorter && WardSorter->Filled >= 3)
 		{
-			Say(TEXT("Mama smiles."), 4.f);
+			Say(TEXT("\"That's it. Good boy.\""), 4.f);
+			HG::Voice(this, TEXT("mom_good"), MomSpot + FVector(0, 0, 150));
 			WardTimer = 0.f;
 			WardStep = 2;
 		}
@@ -394,7 +510,8 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 			WardTimer = 0.f;
 			if (WardRabbit)
 			{
-				Say(TEXT("Bring her the rabbit."), 7.f);
+				Say(TEXT("\"Now bring me your rabbit, love.\""), 7.f);
+				HG::Voice(this, TEXT("mom_rabbit"), MomSpot + FVector(0, 0, 150));
 				WardStep = 3;
 			}
 			else
@@ -406,24 +523,59 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	case 3:
 		if (WardRabbit && Player->HeldToy() != WardRabbit && FVector::Dist2D(WardRabbit->GetActorLocation(), MomSpot) < 170.f)
 		{
-			Say(TEXT("She holds it for you."), 4.f);
+			Say(TEXT("\"Thank you, my darling. I've got him.\""), 4.f);
+			HG::Voice(this, TEXT("mom_thanks"), MomSpot + FVector(0, 0, 150));
 			WardTimer = 0.f;
 			WardStep = 4;
 		}
 		break;
 	default:
-		WardTimer += Dt;
-		if (WardTimer > 4.f && !bOver)
-		{
-			bOver = true;
-			bWon = true;
-			EndTitle = TEXT("THE DOCTORS COME IN");
-			EndLines.Reset();
-			EndLines.Add(TEXT("End of the first scene."));
-			EndLines.Add(TEXT("The next one is being built."));
-			UE_LOG(LogHG, Log, TEXT("HGTEST WARD done seconds=%d"), FMath::RoundToInt32(RoundSeconds));
-		}
+		// Nothing left to do but play, until the clock says otherwise.
 		break;
+	}
+}
+
+void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
+{
+	// Plays scene one by itself: carries each shape to the sorter, then the rabbit to where mom stands.
+	BotTimer += Dt;
+	if (BotTimer < 0.5f)
+	{
+		return;
+	}
+	BotTimer = 0.f;
+	auto StandBy = [Player](const FVector& Thing)
+	{
+		Player->SetActorLocation(Thing + FVector(70, 0, 60));
+		Player->LookAt(Thing + FVector(0, 0, 6));
+	};
+	const int32 Step = BotStep++;
+	const int32 Shape = Step / 4;
+	if (WardShapes.IsValidIndex(Shape))
+	{
+		switch (Step % 4)
+		{
+		case 0: StandBy(WardShapes[Shape]->GetActorLocation()); break;
+		case 1: Player->Interact(); break;
+		case 2: StandBy(WardSorter->GetActorLocation() + FVector(0, 0, 10)); break;
+		default: Player->Interact(); break;
+		}
+		return;
+	}
+	const int32 After = Step - WardShapes.Num() * 4;
+	if (After == 0)
+	{
+		UE_LOG(LogHG, Log, TEXT("HGTEST SORTER %s filled=%d"), WardSorter->Filled == 3 ? TEXT("PASS") : TEXT("FAIL"), WardSorter->Filled);
+		if (WardRabbit) { StandBy(WardRabbit->GetActorLocation() + FVector(0, 0, 12)); }
+	}
+	else if (After == 1 && WardRabbit) { Player->Interact(); }
+	else if (After == 2) { Player->SetActorLocation(MomSpot + FVector(60, -60, 60)); Player->LookAt(MomSpot); }
+	else if (After == 3 && WardRabbit) { Player->Interact(); }
+	else if (After > 3 && (bOver || After > 60))
+	{
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete;
+		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
+		Finish(bGood ? 0 : 1);
 	}
 }
 
@@ -526,6 +678,11 @@ void AHGGameMode::Travel(EHGVariant To)
 
 void AHGGameMode::Finish(int32 ExitCode)
 {
+	if (SecondsSeen > 0.5)
+	{
+		UE_LOG(LogHG, Log, TEXT("HGTEST FPS variant=%s average=%d frames=%d seconds=%d"), HG::VariantKey(Variant),
+			FMath::RoundToInt32(FramesSeen / SecondsSeen), FramesSeen, FMath::RoundToInt32(SecondsSeen));
+	}
 	UE_LOG(LogHG, Log, TEXT("HGTEST DONE code=%d"), ExitCode);
 	bBot = false;
 	bShots = false;
@@ -553,13 +710,25 @@ void AHGGameMode::Tick(float DeltaSeconds)
 		return;
 	}
 
+	++FramesSeen;
+	SecondsSeen += FApp::GetDeltaTime();
+
 	if (Variant == EHGVariant::Ward)
 	{
 		// The story's first scene has its own small script and none of the fuse-hunt rules.
+		if (IsCutscene())
+		{
+			TickCutscene(DeltaSeconds, Player);
+			return;
+		}
 		if (!bOver)
 		{
 			RoundSeconds += DeltaSeconds;
 			TickWard(DeltaSeconds, Player);
+		}
+		if (bBot)
+		{
+			TickWardBot(DeltaSeconds, Player);
 		}
 		if (bShots)
 		{
@@ -591,20 +760,36 @@ void AHGGameMode::Tick(float DeltaSeconds)
 			}
 			else if (ShotStep == 3 && ShotTimer > 0.5f)
 			{
-				// Up close to mom, from where a five-year-old would look at her.
-				Player->SetActorLocation(MomSpot + FVector(25, -150, 60));
-				Player->LookAt(MomSpot + FVector(0, 0, 125));
+				// The door wall, with the clock, then jump the clock to a few seconds before ten.
+				Player->SetActorLocation(FVector(-60, -40, 60));
+				Player->LookAt(FVector(260, 60, 150));
 				++ShotStep;
 				ShotTimer = 0.f;
 			}
 			else if (ShotStep == 4 && ShotTimer > 2.5f)
 			{
-				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-4-mom.png"), true, false);
-				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-4-mom"));
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-4-clock.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-4-clock"));
 				++ShotStep;
 				ShotTimer = 0.f;
 			}
-			else if (ShotStep == 5 && ShotTimer > 2.f)
+			else if (ShotStep == 5 && ShotTimer > 0.5f)
+			{
+				// A picture is taken a frame after it is asked for, so only now move on: to the door, seconds before ten.
+				RoundSeconds = 119.f;
+				Player->SetActorLocation(FVector(40, 150, 60));
+				Player->LookAt(FVector(300, 150, 95));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 6 && ShotTimer > 4.5f)
+			{
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-5-door.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-5-door"));
+				++ShotStep;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 7 && ShotTimer > 1.5f)
 			{
 				Finish(0);
 			}
@@ -960,17 +1145,19 @@ void AHGHUD::DrawHUD()
 	if (bStory)
 	{
 		// No meters, no inventory. A dot to aim with, a title card, and the odd line of text.
-		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.55f), W * 0.5f - 1.5f, H * 0.5f - 1.5f, 3.f, 3.f);
-		if (Game->RoundSeconds < 6.f)
+		if (Game->IsCutscene())
 		{
-			const float Alpha = FMath::Clamp(5.f - Game->RoundSeconds, 0.f, 1.f);
-			DrawRect(FLinearColor(0.f, 0.f, 0.f, Alpha), 0.f, 0.f, W, H);
+			// The title sits over the first shot and is gone before the second.
+			const float T = Game->CineElapsed();
+			const float Alpha = FMath::Clamp(FMath::Min(T - 0.6f, 4.2f - T), 0.f, 1.f);
 			Centered(TEXT("RUSSIA, 1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha));
-			Centered(TEXT("Based on a true story."), H * 0.52f, 1.3f * S, FLinearColor(Dim.R, Dim.G, Dim.B, Alpha));
+			Centered(TEXT("Based on a true story."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
+			return;
 		}
-		else if (Game->RoundSeconds < 16.f)
+		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.55f), W * 0.5f - 1.5f, H * 0.5f - 1.5f, 3.f, 3.f);
+		if (Game->RoundSeconds < 12.f)
 		{
-			const float Alpha = FMath::Clamp(16.f - Game->RoundSeconds, 0.f, 1.f);
+			const float Alpha = FMath::Clamp(12.f - Game->RoundSeconds, 0.f, 1.f);
 			Centered(TEXT("WASD move      Mouse look      Click to pick up and put down"), H * 0.845f, 1.05f * S, FLinearColor(Dim.R, Dim.G, Dim.B, Alpha));
 		}
 		if (Now < Game->MessageUntil)
