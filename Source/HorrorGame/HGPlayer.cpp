@@ -182,6 +182,65 @@ void AHGPlayer::LookAt(const FVector& Target)
 	}
 }
 
+void AHGPlayer::SetCarried(bool bOn)
+{
+	if (bCarried == bOn)
+	{
+		return;
+	}
+	bCarried = bOn;
+	if (bOn && Held)
+	{
+		// Whatever was in his hands stays behind on the floor.
+		FVector Spot = GetActorLocation() + FRotator(0.f, GetActorRotation().Yaw, 0.f).Vector() * 40.f;
+		Spot.Z = 1.f;
+		Held->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		Held->SetActorLocationAndRotation(Spot, FRotator(0.f, FMath::FRandRange(0.f, 360.f), 0.f));
+		Held = nullptr;
+		HG::Extra(this, TEXT("wood_3"), Spot, 0.6f, 1.f);
+	}
+	GetCapsuleComponent()->SetCollisionEnabled(bOn ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+	if (bOn)
+	{
+		GetCharacterMovement()->StopMovementImmediately();
+		GetCharacterMovement()->DisableMovement();
+	}
+	else
+	{
+		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	}
+}
+
+void AHGPlayer::CarryEyesTo(const FVector& Eyes)
+{
+	if (bCarried)
+	{
+		SetActorLocation(Eyes - Camera->GetRelativeLocation());
+	}
+}
+
+void AHGPlayer::TurnTowards(const FVector& Target, float Dt, float Speed)
+{
+	if (AController* C = GetController())
+	{
+		FRotator Want = (Target - EyeLocation()).Rotation();
+		Want.Pitch = FMath::Clamp(Want.Pitch, -82.f, 82.f);
+		Want.Roll = 0.f;
+		C->SetControlRotation(FMath::RInterpTo(C->GetControlRotation(), Want, Dt, Speed));
+	}
+}
+
+void AHGPlayer::SetSaturation(float Saturation)
+{
+	Camera->PostProcessSettings.bOverride_ColorSaturation = true;
+	Camera->PostProcessSettings.ColorSaturation = FVector4(Saturation, Saturation, Saturation, 1.f);
+}
+
+void AHGPlayer::SetLens(float Degrees)
+{
+	Camera->SetFieldOfView(Degrees);
+}
+
 void AHGPlayer::FallOver()
 {
 	bDead = true;
@@ -453,7 +512,7 @@ void AHGPlayer::HandleKeys(APlayerController* PC, AHGGameMode* Game)
 
 	if (bChild)
 	{
-		if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton) || PC->WasInputKeyJustPressed(EKeys::E)) { Interact(); }
+		if (!bCarried && (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton) || PC->WasInputKeyJustPressed(EKeys::E))) { Interact(); }
 		return;
 	}
 	if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton)) { UseItem(); }
@@ -568,6 +627,11 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	Control.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Control.Pitch) + MouseY * LookSpeed, -82.f, 82.f);
 	Control.Roll = 0.f;
 	PC->SetControlRotation(Control);
+	if (bCarried)
+	{
+		// Looking is all that is left to him.
+		return;
+	}
 
 	// Move.
 	const float Forward = (PC->IsInputKeyDown(EKeys::W) ? 1.f : 0.f) - (PC->IsInputKeyDown(EKeys::S) ? 1.f : 0.f);

@@ -12,6 +12,7 @@ class AHGMonster;
 class AHGPlayer;
 class AHGSorter;
 class UAnimSequence;
+class UHGFaceAnim;
 class UHGPersonAnim;
 class AHGToy;
 class USoundBase;
@@ -131,6 +132,13 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UHGPersonAnim>> DoctorAnims;
 
+	/** What their faces are doing. Null entries when a person has no face mesh. */
+	UPROPERTY()
+	TObjectPtr<UHGFaceAnim> MomFaceAnim;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UHGFaceAnim>> DoctorFaces;
+
 	UPROPERTY()
 	TObjectPtr<UAnimSequence> PersonIdle;
 
@@ -138,8 +146,43 @@ private:
 	TObjectPtr<UAnimSequence> PersonWalk;
 
 	/** Spawns one of the MetaHuman people and hands back what animates the body. Null when the plugin lacks them. */
-	AActor* SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim);
+	AActor* SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim, UHGFaceAnim*& OutFace);
 	void TickDoctors(float Dt, const AHGPlayer* Player);
+
+	/**
+	 * Scene two, the handover. Mom lifts him, carries him to the door and gives him to the woman
+	 * doctor, who turns and carries him away down the hall while he looks back over her shoulder.
+	 * He can only look. The further he gets from mom, the less colour is left and the less the
+	 * doctors look like people.
+	 */
+	void TickHandover(float Dt, AHGPlayer* Player);
+	/** Moves a person a step towards To, on the walk clip. True once they are there and standing. */
+	bool WalkPerson(AActor* Person, UHGPersonAnim* Anim, const FVector& To, float Speed, float ClipRate, float Dt);
+	void FacePerson(AActor* Person, const FVector& Point, float Dt, float Speed) const;
+	/** Turns a person's head towards Target. PitchShare is how much of the up and down they follow. */
+	void PersonLooks(const AActor* Person, UHGPersonAnim* Anim, const FVector& Target, float PitchShare) const;
+	/** A point given from where a person stands: so far ahead of them, to their left, and up. */
+	FVector PersonPoint(const AActor* Person, float Ahead, float Left, float Up) const;
+
+	/** A faint cold light on the face of the doctor who follows, so what his face becomes can be seen. */
+	UPROPERTY()
+	TObjectPtr<class UPointLightComponent> FollowLight;
+
+	/** How many of the story's voice lines are in the private plugin, for the self-play check. */
+	int32 VoicesFound = 0;
+	int32 HandStep = 0;
+	float HandTimer = 0.f;
+	/** Where his eyes were when mom reached him, and where she stops to pick him up. */
+	FVector HandFrom = FVector::ZeroVector;
+	FVector HandMomStop = FVector::ZeroVector;
+	int32 HandLeg = 0;
+	int32 ManLeg = 0;
+	int32 HandShots = 0;
+	bool bManFollows = false;
+	bool bHushed = false;
+	bool bCried = false;
+	bool bHandedOver = false;
+	bool bShotPlaced = false;
 
 	void TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen);
 

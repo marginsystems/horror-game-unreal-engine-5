@@ -24,6 +24,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
 #include "HGActors.h"
+#include "HGFaceAnim.h"
 #include "HGLevel.h"
 #include "HGMonster.h"
 #include "HGPersonAnim.h"
@@ -331,10 +332,17 @@ void AHGGameMode::PopulateWard()
 	// Mom, standing by the bed, watching him play. Without the plugin her voice is still in the
 	// room, from where she would stand.
 	UHGPersonAnim* Anim = nullptr;
-	WardMom = SpawnPerson(TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, Anim);
+	UHGFaceAnim* Face = nullptr;
+	WardMom = SpawnPerson(TEXT("/HorrorPrivate/MetaHumans/Mom/BP_Mom.BP_Mom_C"), MomSpot, (FVector(60, -70, 0) - MomSpot).Rotation().Yaw, Anim, Face);
 	MomAnim = Anim;
+	MomFaceAnim = Face;
 	if (WardMom)
 	{
+		if (MomFaceAnim)
+		{
+			// Watching him play, she is happy.
+			MomFaceAnim->SetWarm(0.7f);
+		}
 		if (MomAnim)
 		{
 			MomAnim->SetClip(PersonIdle);
@@ -365,8 +373,15 @@ void AHGGameMode::PopulateWard()
 	for (int32 i = 0; i < 2; ++i)
 	{
 		UHGPersonAnim* DoctorAnim = nullptr;
-		if (AActor* Doctor = SpawnPerson(DoctorClasses[i], DoctorStarts[i], -90.f, DoctorAnim))
+		UHGFaceAnim* DoctorFace = nullptr;
+		if (AActor* Doctor = SpawnPerson(DoctorClasses[i], DoctorStarts[i], -90.f, DoctorAnim, DoctorFace))
 		{
+			if (DoctorFace)
+			{
+				// Polite, the way people are with a child they are about to upset.
+				DoctorFace->SetWarm(0.35f);
+			}
+			DoctorFaces.Add(DoctorFace);
 			if (DoctorAnim)
 			{
 				DoctorAnim->SetClip(PersonIdle);
@@ -376,11 +391,30 @@ void AHGGameMode::PopulateWard()
 		}
 	}
 	UE_LOG(LogHG, Log, TEXT("HGTEST DOCTORS spawned=%d"), WardDoctors.Num());
+
+	// The lines spoken in scenes one and two. They live with the people, in the private plugin.
+	static const TCHAR* Lines[] = { TEXT("mom_shapes"), TEXT("mom_good"), TEXT("mom_rabbit"), TEXT("mom_thanks"), TEXT("mom_doctors"),
+		TEXT("doc_ready"), TEXT("mom_lift"), TEXT("doc_take"), TEXT("doc_hush") };
+	for (const TCHAR* Line : Lines)
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/V_%s.V_%s"), Line, Line);
+		if (USoundBase* Found = LoadObject<USoundBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			KeptSounds.Add(Found);
+			++VoicesFound;
+		}
+		else if (WardMom)
+		{
+			UE_LOG(LogHG, Warning, TEXT("HGTEST MISSING voice %s"), Line);
+		}
+	}
+	UE_LOG(LogHG, Log, TEXT("HGTEST VOICES found=%d/%d"), VoicesFound, static_cast<int32>(UE_ARRAY_COUNT(Lines)));
 }
 
-AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim)
+AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim, UHGFaceAnim*& OutFace)
 {
 	OutAnim = nullptr;
+	OutFace = nullptr;
 	UClass* Class = LoadClass<AActor>(nullptr, ClassPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
 	if (!Class)
 	{
@@ -418,14 +452,21 @@ AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, floa
 			Mesh->SetAnimInstanceClass(UHGPersonAnim::StaticClass());
 			OutAnim = Cast<UHGPersonAnim>(Mesh->GetAnimInstance());
 		}
+		else if (Mesh->GetName() == TEXT("Face"))
+		{
+			// The head's own mesh: it follows the body and carries the expression (see HGFaceAnim.h).
+			Mesh->SetAnimInstanceClass(UHGFaceAnim::StaticClass());
+			OutFace = Cast<UHGFaceAnim>(Mesh->GetAnimInstance());
+		}
 	}
 	return Person;
 }
 
 void AHGGameMode::TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen)
 {
-	if (!WardMom)
+	if (!WardMom || HandStep >= 2)
 	{
+		// From the moment she goes to pick him up, the handover moves her.
 		return;
 	}
 	// She watches him play, and now and then the door. More often as ten gets close; once it opens, only the door.
@@ -464,7 +505,7 @@ void AHGGameMode::TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen)
 
 void AHGGameMode::TickDoctors(float Dt, const AHGPlayer* Player)
 {
-	if (WardStep != 10)
+	if (WardStep != 10 || HandStep >= 5)
 	{
 		return;
 	}
@@ -500,6 +541,317 @@ void AHGGameMode::TickDoctors(float Dt, const AHGPlayer* Player)
 			const bool bSees = Left < 260.f;
 			Anim->LookTowards(bSees ? FMath::FindDeltaAngleDegrees(Facing, Look.Yaw) : 0.f, bSees ? FMath::Clamp(Look.Pitch * 0.6f, -18.f, 18.f) : 0.f);
 		}
+	}
+}
+
+FVector AHGGameMode::PersonPoint(const AActor* Person, float Ahead, float Left, float Up) const
+{
+	const FRotationMatrix Axes(FRotator(0.f, Person->GetActorRotation().Yaw - MomYawOffset, 0.f));
+	return Person->GetActorLocation() + Axes.GetUnitAxis(EAxis::X) * Ahead - Axes.GetUnitAxis(EAxis::Y) * Left + FVector(0.f, 0.f, Up);
+}
+
+bool AHGGameMode::WalkPerson(AActor* Person, UHGPersonAnim* Anim, const FVector& To, float Speed, float ClipRate, float Dt)
+{
+	const FVector At = Person->GetActorLocation();
+	FVector Step = To - At;
+	Step.Z = 0.f;
+	const float Left = Step.Size();
+	const bool bWalking = Left > 3.f;
+	if (bWalking)
+	{
+		Person->SetActorLocation(At + Step / Left * FMath::Min(Left, Speed * Dt));
+		const FRotator Want(0.f, Step.Rotation().Yaw + MomYawOffset, 0.f);
+		Person->SetActorRotation(FMath::RInterpTo(Person->GetActorRotation(), Want, Dt, 5.f));
+	}
+	if (Anim)
+	{
+		Anim->SetClip(bWalking ? PersonWalk.Get() : PersonIdle.Get(), bWalking ? ClipRate : 1.f);
+	}
+	return !bWalking;
+}
+
+void AHGGameMode::FacePerson(AActor* Person, const FVector& Point, float Dt, float Speed) const
+{
+	FVector To = Point - Person->GetActorLocation();
+	To.Z = 0.f;
+	if (To.SizeSquared() > 25.f)
+	{
+		const FRotator Want(0.f, To.Rotation().Yaw + MomYawOffset, 0.f);
+		Person->SetActorRotation(FMath::RInterpTo(Person->GetActorRotation(), Want, Dt, Speed));
+	}
+}
+
+void AHGGameMode::PersonLooks(const AActor* Person, UHGPersonAnim* Anim, const FVector& Target, float PitchShare) const
+{
+	if (!Anim)
+	{
+		return;
+	}
+	const float Facing = Person->GetActorRotation().Yaw - MomYawOffset;
+	const FRotator Look = (Target - (Person->GetActorLocation() + FVector(0.f, 0.f, 158.f))).Rotation();
+	Anim->LookTowards(FMath::FindDeltaAngleDegrees(Facing, Look.Yaw), FMath::Clamp(Look.Pitch * PitchShare, -24.f, 24.f));
+}
+
+void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
+{
+	AActor* Woman = WardDoctors[0];
+	AActor* Man = WardDoctors[1];
+	UHGPersonAnim* WomanAnim = DoctorAnims[0];
+	UHGPersonAnim* ManAnim = DoctorAnims[1];
+	HandTimer += Dt;
+	auto Next = [this]() { ++HandStep; HandTimer = 0.f; };
+	auto Shot = [this](int32 Bit, const TCHAR* Name)
+	{
+		if (bShots && !(HandShots & (1 << Bit)))
+		{
+			HandShots |= 1 << Bit;
+			FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / Name, true, false);
+			UE_LOG(LogHG, Log, TEXT("HGTEST SHOT %s"), Name);
+		}
+	};
+	const FVector Eyes = Player->EyeLocation();
+	// Where his eyes are in each pair of arms: in front of mom's chest, looking up at her; then on
+	// the doctor's shoulder, looking back the way they came.
+	const FVector MomHold = PersonPoint(WardMom, 50.f, 8.f, 122.f);
+	const FVector DoctorHold = PersonPoint(Woman, 8.f, 27.f, 148.f);
+	const FVector MomFace = PersonPoint(WardMom, 9.f, 0.f, 153.f);
+	const FVector WomanFace = PersonPoint(Woman, 9.f, 0.f, 160.f);
+	const FVector ManFace = PersonPoint(Man, 9.f, 0.f, 166.f);
+	const FVector WomanAt = Woman->GetActorLocation();
+
+	switch (HandStep)
+	{
+	case 0:
+		// Both of them are in the doorway. She speaks to mom, not to him.
+		if (WardTimer > 10.5f)
+		{
+			Say(TEXT("\"Good morning. We're ready for him now.\""), 4.5f);
+			HG::Voice(this, TEXT("doc_ready"), WomanFace);
+			Next();
+		}
+		break;
+	case 1:
+		if (HandTimer > 3.4f)
+		{
+			// His legs stop answering here. From now on he can only look.
+			Player->SetCarried(true);
+			const FVector MomAt = WardMom->GetActorLocation();
+			const FVector ChildAt(Player->GetActorLocation().X, Player->GetActorLocation().Y, 0.f);
+			FVector Gap = MomAt - ChildAt;
+			Gap.Z = 0.f;
+			const float Apart = Gap.Size();
+			HandMomStop = Apart > 60.f ? ChildAt + Gap / Apart * 52.f : MomAt;
+			Next();
+		}
+		break;
+	case 2:
+	{
+		// Mom comes over to him.
+		const bool bThere = WalkPerson(WardMom, MomAnim, HandMomStop, 112.f, 0.85f, Dt);
+		PersonLooks(WardMom, MomAnim, Eyes, 0.5f);
+		if (bThere)
+		{
+			Say(TEXT("\"Come here, sweetheart. It's all right. I'll be right here.\""), 5.5f);
+			HG::Voice(this, TEXT("mom_lift"), MomFace);
+			if (MomAnim)
+			{
+				MomAnim->SetHold(1.f);
+			}
+			if (MomFaceAnim)
+			{
+				// The small sad smile he remembers.
+				MomFaceAnim->SetWarm(0.6f);
+				MomFaceAnim->SetSad(0.85f);
+			}
+			HandFrom = Eyes;
+			Next();
+		}
+		break;
+	}
+	case 3:
+	{
+		// She picks him up: the floor drops away and her face is all there is.
+		FacePerson(WardMom, HandFrom, Dt, 3.f);
+		const float Lift = FMath::SmoothStep(0.f, 1.f, (HandTimer - 0.5f) / 2.1f);
+		Player->CarryEyesTo(FMath::Lerp(HandFrom, MomHold, Lift));
+		Player->SetLens(FMath::Lerp(92.f, 72.f, Lift));
+		if (HandTimer < 3.2f || bShots)
+		{
+			Player->TurnTowards(MomFace, Dt, 2.2f);
+		}
+		PersonLooks(WardMom, MomAnim, Eyes, 0.35f);
+		if (HandTimer > 4.f) { Shot(0, TEXT("ward-7-lifted.png")); }
+		if (HandTimer > 5.2f)
+		{
+			Next();
+		}
+		break;
+	}
+	case 4:
+	{
+		// She carries him to the door. He sees who is waiting there.
+		const bool bThere = WalkPerson(WardMom, MomAnim, FVector(226, 150, 0), 78.f, 0.62f, Dt);
+		Player->CarryEyesTo(MomHold + FVector(0.f, 0.f, FMath::Sin(HandTimer * 5.5f) * 1.1f));
+		if (HandTimer < 1.8f || bShots)
+		{
+			Player->TurnTowards(WomanFace, Dt, 1.6f);
+		}
+		PersonLooks(WardMom, MomAnim, WomanFace, 0.5f);
+		if (HandTimer > 1.7f) { Shot(1, TEXT("ward-8-carried.png")); }
+		if (bThere)
+		{
+			Say(TEXT("\"There we are. Come along, little one. It will all be over very soon.\""), 6.f);
+			HG::Voice(this, TEXT("doc_take"), WomanFace);
+			if (WomanAnim)
+			{
+				WomanAnim->SetClip(PersonIdle);
+				WomanAnim->SetHold(1.f);
+			}
+			if (MomFaceAnim)
+			{
+				MomFaceAnim->SetWarm(0.3f);
+				MomFaceAnim->SetSad(1.f);
+			}
+			Next();
+		}
+		break;
+	}
+	case 5:
+	{
+		// From her arms into the doctor's. He looks back at mom the whole way across.
+		FacePerson(WardMom, WomanAt, Dt, 2.5f);
+		FacePerson(Woman, WardMom->GetActorLocation(), Dt, 2.5f);
+		const float Pass = FMath::SmoothStep(0.f, 1.f, (HandTimer - 1.2f) / 2.3f);
+		Player->CarryEyesTo(FMath::Lerp(MomHold, DoctorHold, Pass));
+		Player->SetLens(FMath::Lerp(72.f, 82.f, Pass));
+		if (MomAnim && Pass > 0.7f)
+		{
+			MomAnim->SetHold(0.f);
+		}
+		if ((HandTimer > 1.4f && HandTimer < 4.2f) || bShots)
+		{
+			Player->TurnTowards(MomFace, Dt, 1.5f);
+		}
+		PersonLooks(WardMom, MomAnim, Eyes, 0.6f);
+		PersonLooks(Woman, WomanAnim, Eyes, 0.7f);
+		if (WalkPerson(Man, ManAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
+		{
+			FacePerson(Man, Eyes, Dt, 2.5f);
+		}
+		PersonLooks(Man, ManAnim, Eyes, 0.6f);
+		if (HandTimer > 1.5f && !bCried)
+		{
+			// He cries for her. The sound is only there once a recording of it is in the private plugin.
+			bCried = true;
+			HG::ExtraBed(this, TEXT("child_cry"), 0.7f);
+		}
+		if (HandTimer > 3.9f) { Shot(2, TEXT("ward-9-handover.png")); }
+		if (HandTimer > 5.f)
+		{
+			HG::ExtraBed(this, TEXT("steps_adult"), 0.5f);
+			Next();
+		}
+		break;
+	}
+	default:
+	{
+		// She turns and carries him out and along the hall to the right. Mom comes as far as the
+		// doorway and no further. The other doctor falls in behind, where he cannot help seeing him.
+		static const FVector WomanPath[] = { FVector(402, 430, 0), FVector(430, 1340, 0) };
+		static const FVector ManPath[] = { FVector(446, 500, 0), FVector(432, 1175, 0) };
+		if (WalkPerson(Woman, WomanAnim, WomanPath[HandLeg], 92.f, 0.72f, Dt) && HandLeg < 1)
+		{
+			++HandLeg;
+		}
+		if (WomanAnim)
+		{
+			WomanAnim->LookTowards(0.f, 0.f);
+		}
+		Player->CarryEyesTo(DoctorHold + FVector(0.f, 0.f, FMath::Sin(HandTimer * 6.f) * 1.3f));
+		Player->SetLens(FMath::Lerp(82.f, 88.f, FMath::Clamp(HandTimer / 3.f, 0.f, 1.f)));
+
+		if (WalkPerson(WardMom, MomAnim, FVector(296, 150, 0), 66.f, 0.55f, Dt))
+		{
+			FacePerson(WardMom, Eyes, Dt, 2.f);
+		}
+		PersonLooks(WardMom, MomAnim, Eyes, 0.5f);
+
+		bManFollows = bManFollows || WomanAt.Y > Man->GetActorLocation().Y + 150.f;
+		if (bManFollows)
+		{
+			if (WalkPerson(Man, ManAnim, ManPath[ManLeg], 92.f, 0.72f, Dt) && ManLeg < 1)
+			{
+				++ManLeg;
+			}
+		}
+		else if (WalkPerson(Man, ManAnim, FVector(505, 300, 0), 70.f, 0.6f, Dt))
+		{
+			FacePerson(Man, Eyes, Dt, 2.f);
+		}
+		PersonLooks(Man, ManAnim, Eyes, 0.7f);
+
+		// How far he has been taken from her, from none at the door to all of it down the hall.
+		const float Away = FMath::Clamp((WomanAt.Y - 152.f) / 950.f, 0.f, 1.f);
+		Player->SetSaturation(FMath::Lerp(1.3f, 0.12f, FMath::SmoothStep(0.f, 1.f, Away * 1.1f)));
+		const float Wrong = FMath::SmoothStep(0.08f, 1.f, Away);
+		if (WomanAnim) { WomanAnim->SetWrong(Wrong); }
+		if (ManAnim) { ManAnim->SetWrong(Wrong); }
+		for (UHGFaceAnim* DoctorFace : DoctorFaces)
+		{
+			if (DoctorFace) { DoctorFace->SetWrong(Wrong); }
+		}
+		// The one behind also grows: too tall for the hall by the end of it.
+		Man->SetActorScale3D(FVector(1.f, 1.f, 1.f + 0.13f * Wrong));
+		if (!FollowLight)
+		{
+			FollowLight = NewObject<UPointLightComponent>(Man);
+			FollowLight->SetMobility(EComponentMobility::Movable);
+			FollowLight->SetupAttachment(Man->GetRootComponent());
+			FollowLight->SetRelativeLocation(FVector(0, 62, 156));
+			FollowLight->SetIntensityUnits(ELightUnits::Unitless);
+			FollowLight->SetLightColor(FLinearColor(0.72f, 0.82f, 1.f));
+			FollowLight->SetAttenuationRadius(120.f);
+			FollowLight->SetCastShadows(false);
+			FollowLight->RegisterComponent();
+			Man->AddInstanceComponent(FollowLight);
+		}
+		// The hall lamps are in the thousands but metres away; this one is a hand's width from his face.
+		FollowLight->SetIntensity(110.f * Wrong);
+
+		if (HandTimer > 6.2f && !bHushed)
+		{
+			bHushed = true;
+			Say(TEXT("\"Shh. Nobody is going to hurt you.\""), 4.5f);
+			HG::Voice(this, TEXT("doc_hush"), ManFace);
+		}
+
+		if (bShots)
+		{
+			// Pictures: mom left in the doorway, the one following, the one carrying, and the far end.
+			Player->TurnTowards(HandTimer < 4.4f ? MomFace : ((HandTimer > 8.4f && HandTimer < 10.2f) ? WomanFace : ManFace), Dt, 2.5f);
+			if (HandTimer > 4.2f) { Shot(3, TEXT("ward-10-doorway.png")); }
+			if (HandTimer > 8.2f) { Shot(4, TEXT("ward-11-following.png")); }
+			if (HandTimer > 10.f) { Shot(5, TEXT("ward-12-carrier.png")); }
+			if (HandTimer > 12.4f) { Shot(6, TEXT("ward-13-far.png")); }
+		}
+		else if (HandTimer > 0.3f && HandTimer < 2.6f)
+		{
+			Player->TurnTowards(MomFace, Dt, 1.4f);
+		}
+
+		if (HandTimer > 13.f && !bOver)
+		{
+			bOver = true;
+			bWon = true;
+			bHandedOver = true;
+			EndTitle = TEXT("HE IS CARRIED OUT");
+			EndLines.Reset();
+			EndLines.Add(TEXT("End of the second scene."));
+			EndLines.Add(TEXT("The next one is being built."));
+			UE_LOG(LogHG, Log, TEXT("HGTEST HANDOVER done seconds=%d wrong=%.2f"), FMath::RoundToInt32(RoundSeconds), Wrong);
+		}
+		break;
+	}
 	}
 }
 
@@ -580,6 +932,12 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	{
 		WardStep = 10;
 		WardTimer = 0.f;
+		if (MomFaceAnim)
+		{
+			// She knew this was coming. The smile mostly goes.
+			MomFaceAnim->SetWarm(0.3f);
+			MomFaceAnim->SetSad(0.55f);
+		}
 		Say(TEXT("\"It's all right. The doctors are only going to help you.\""), 6.f);
 		HG::Voice(this, TEXT("mom_doctors"), MomSpot + FVector(0, 0, 150));
 	}
@@ -603,9 +961,13 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 		DoorOpen = FMath::FInterpConstantTo(DoorOpen, 1.f, Dt, 0.7f);
 		Level->SetDoorOpen(FMath::SmoothStep(0.f, 1.f, DoorOpen));
 		WardTimer += Dt;
-		// With the doctors in the game the scene holds on them standing in the doorway.
-		if (WardTimer > (WardDoctors.Num() > 0 ? 15.f : 9.5f) && !bOver)
+		if (WardMom && WardDoctors.Num() == 2)
 		{
+			TickHandover(Dt, Player);
+		}
+		else if (WardTimer > 9.5f && !bOver)
+		{
+			// Without the people (the private plugin is missing) the scene ends on the open door.
 			bOver = true;
 			bWon = true;
 			EndTitle = TEXT("THE DOCTORS COME IN");
@@ -704,9 +1066,12 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 	else if (After == 1 && WardRabbit) { Player->Interact(); }
 	else if (After == 2) { Player->SetActorLocation(MomSpot + FVector(60, -60, 60)); Player->LookAt(MomSpot); }
 	else if (After == 3 && WardRabbit) { Player->Interact(); }
-	else if (After > 3 && (bOver || After > 60))
+	else if (After > 3 && (bOver || After > 220))
 	{
-		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete;
+		// With the people in the game the scene has to run on through the handover.
+		const bool bStaged = WardMom && WardDoctors.Num() == 2;
+		UE_LOG(LogHG, Log, TEXT("HGTEST HANDOVER %s staged=%d step=%d carried=%d"), (!bStaged || bHandedOver) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, HandStep, Player->IsCarried() ? 1 : 0);
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && Player->IsCarried() && VoicesFound == 9));
 		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}
@@ -953,6 +1318,24 @@ void AHGGameMode::Tick(float DeltaSeconds)
 				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-6-doctors"));
 				++ShotStep;
 				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 8 && WardMom && WardDoctors.Num() == 2)
+			{
+				// The handover takes its own pictures. He starts it where he would be: on the floor by the toys.
+				if (!bShotPlaced)
+				{
+					bShotPlaced = true;
+					Player->SetActorLocation(FVector(60, -70, 60));
+					Player->LookAt(FVector(300, 150, 120));
+				}
+				if (!bOver)
+				{
+					ShotTimer = 0.f;
+				}
+				else if (ShotTimer > 1.5f)
+				{
+					Finish(0);
+				}
 			}
 			else if ((ShotStep == 8 || (ShotStep == 7 && WardDoctors.Num() == 0)) && ShotTimer > 1.5f)
 			{
@@ -1366,7 +1749,11 @@ void AHGHUD::DrawHUD()
 			Centered(TEXT("Inspired in part by a true story."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
 			return;
 		}
-		DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.55f), W * 0.5f - 1.5f, H * 0.5f - 1.5f, 3.f, 3.f);
+		if (!Player || !Player->IsCarried())
+		{
+			// The aiming dot goes when his hands do.
+			DrawRect(FLinearColor(1.f, 1.f, 1.f, 0.55f), W * 0.5f - 1.5f, H * 0.5f - 1.5f, 3.f, 3.f);
+		}
 		if (Game->RoundSeconds < 12.f)
 		{
 			const float Alpha = FMath::Clamp(12.f - Game->RoundSeconds, 0.f, 1.f);

@@ -40,6 +40,21 @@ public:
 	/** The camera's colour and exposure, so a cutscene camera can match it. */
 	const struct FPostProcessSettings& Look() const;
 	class AHGToy* HeldToy() const { return Held; }
+
+	/**
+	 * Scene two: he is picked up. His legs and hands stop answering, whatever he held is left on the
+	 * floor, and from then on something else decides where his eyes are; he can still look around.
+	 */
+	void SetCarried(bool bOn);
+	bool IsCarried() const { return bCarried; }
+	/** Puts his eyes at this point in the world. Only while carried. */
+	void CarryEyesTo(const FVector& Eyes);
+	/** Eases his gaze towards Target, the way a child's eyes are drawn to a face. He can pull away from it. */
+	void TurnTowards(const FVector& Target, float Dt, float Speed);
+	/** 1.3 is the ward's bright colour, 1 is plain, 0 is none. */
+	void SetSaturation(float Saturation);
+	/** The lens angle in degrees. Narrower than the usual 92 for a face held close. */
+	void SetLens(float Degrees);
 	void SmackFlashlight();
 	void SelectSlot(int32 Index);
 	void LookAt(const FVector& Target);
@@ -71,6 +86,7 @@ private:
 
 	/** True in the story's first scene: a five-year-old's height, pace and hands; no flashlight, no weapons. */
 	bool bChild = false;
+	bool bCarried = false;
 	/** Degrees turned per mouse count. The minus and equals keys change it. */
 	float LookSpeed = 0.24f;
 

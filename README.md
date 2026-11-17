@@ -10,8 +10,12 @@ not unusual: children of that time and place had
 operations awake, held on an adult's lap. [The story](docs/STORY.md) tells what happened, what
 the game does with it, and what medical sources say about why it was done that way.
 
-The game is being rebuilt around that story now. The first scene, the ward, can be played:
-a bright children's room at a five-year-old's eye height, toys to pick up, and a shape sorter.
+The game is being rebuilt around that story now. The first two of its six scenes can be played,
+one after the other. The ward: a bright children's room at a five-year-old's eye height, toys
+to pick up, and a shape sorter. Then the handover: at ten the doctors come, your mother lifts
+you and gives you to them, and you are carried out and down the hall looking back at her. You
+can only look. The people (the mother and the two doctors) are in a private assets plugin;
+without it the first scene still plays, in an empty room, and ends when the door opens.
 
 ```bash
 Scripts/play.sh

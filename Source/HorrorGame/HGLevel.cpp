@@ -897,8 +897,23 @@ void AHGLevel::BuildWard()
 		{
 			Drab(FVector((HallNear + HallFar) * 0.5f, 150.f + End * (HallLen * 0.5f + T * 0.5f), H * 0.5f), FVector(HallFar - HallNear, T, H), Cold, false);
 		}
+		// The near wall. Past the ends of the ward it is the hall's own; along the ward it is a skin over
+		// the back of the ward's wall, so no yellow shows out here. The doorway is left open.
+		for (int32 i = 0; i < 3; ++i)
+		{
+			Drab(FVector(HallNear - T * 0.5f, Y + T + 185.f + 370.f * i, H * 0.5f), FVector(T, 370, H), Cold, false);
+		}
+		for (int32 i = 0; i < 2; ++i)
+		{
+			Drab(FVector(HallNear - T * 0.5f, -Y - T - 202.5f - 405.f * i, H * 0.5f), FVector(T, 405, H), Cold, false);
+		}
+		Drab(FVector(HallNear + 1.f, (-Y - T + DoorLow) * 0.5f, H * 0.5f), FVector(2, DoorLow + Y + T, H), Cold, false);
+		Drab(FVector(HallNear + 1.f, (Y + T + DoorHigh) * 0.5f, H * 0.5f), FVector(2, Y + T - DoorHigh, H), Cold, false);
+		Drab(FVector(HallNear + 1.f, (DoorLow + DoorHigh) * 0.5f, (H + DoorTop) * 0.5f), FVector(2, DoorHigh - DoorLow, H - DoorTop), Cold, false);
 		Lamp(this, Root, FVector(HallNear + 150, 150, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 3200.f, 620.f, true);
 		Lamp(this, Root, FVector(HallNear + 150, 150 + 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 4500.f, 700.f, false);
+		// A weak one between, so whoever walks behind him down the hall is never quite lost in the dark.
+		Lamp(this, Root, FVector(HallNear + 150, 150 + 450, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 1300.f, 520.f, false);
 		Lamp(this, Root, FVector(HallNear + 150, 150 - 900, H - 30), FLinearColor(0.55f, 0.72f, 1.f), 1600.f, 620.f, false);
 	}
 

@@ -14,6 +14,8 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 	float Time = 0.f;
 	float Yaw = 0.f;
 	float Pitch = 0.f;
+	float Hold = 0.f;
+	float Wrong = 0.f;
 
 	virtual void PreUpdate(UAnimInstance* InAnimInstance, float DeltaSeconds) override
 	{
@@ -23,6 +25,8 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		Time = Person->Time;
 		Yaw = Person->Yaw;
 		Pitch = Person->Pitch;
+		Hold = Person->Hold;
+		Wrong = Person->Wrong;
 	}
 
 	virtual bool Evaluate(FPoseContext& Output) override
@@ -41,37 +45,77 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		const FVector RootAt = Root.GetTranslation();
 		Root.SetTranslation(FVector(0.f, 0.f, RootAt.Z));
 
-		if (FMath::IsNearlyZero(Yaw, 0.05f) && FMath::IsNearlyZero(Pitch, 0.05f))
+		if (FMath::IsNearlyZero(Yaw, 0.05f) && FMath::IsNearlyZero(Pitch, 0.05f) && Hold < 0.002f && Wrong < 0.002f)
 		{
 			return true;
 		}
-		// The turn is shared out up the neck so it reads as a person looking, not a head on a pin.
-		// Parents first: a child's place is worked out from its parent the first time it is asked for.
-		struct FShare { FName Bone; float Part; };
-		static const FShare Shares[] = {
-			{ TEXT("spine_05"), 0.12f }, { TEXT("neck_01"), 0.22f }, { TEXT("neck_02"), 0.22f }, { TEXT("head"), 0.44f } };
 		const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
 		FCSPose<FCompactPose> Posed;
 		Posed.InitPose(Output.Pose);
+		auto Find = [&Bones](const FName& Bone)
+		{
+			const int32 MeshIndex = Bones.GetPoseBoneIndexForBoneName(Bone);
+			return MeshIndex == INDEX_NONE ? FCompactPoseBoneIndex(INDEX_NONE) : Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(MeshIndex));
+		};
+		// In the body's own space it stands along Z and faces +Y, with its left arm on +X.
+		// Parents first, always: a child's place is worked out from its parent the first time it is asked for.
+
+		// The turn is shared out up the neck so it reads as a person looking, not a head on a pin.
+		// The same four bones carry the stretch: each lifts a little off the one below, and the head
+		// itself grows along its own length, which takes the face with it.
+		struct FShare { FName Bone; float Part; float Lift; };
+		static const FShare Shares[] = {
+			{ TEXT("spine_05"), 0.12f, 0.f }, { TEXT("neck_01"), 0.22f, 2.6f }, { TEXT("neck_02"), 0.22f, 2.6f }, { TEXT("head"), 0.44f, 1.2f } };
 		for (const FShare& Share : Shares)
 		{
-			const int32 MeshIndex = Bones.GetPoseBoneIndexForBoneName(Share.Bone);
-			if (MeshIndex == INDEX_NONE)
-			{
-				continue;
-			}
-			const FCompactPoseBoneIndex Index = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(MeshIndex));
+			const FCompactPoseBoneIndex Index = Find(Share.Bone);
 			if (!Index.IsValid())
 			{
 				continue;
 			}
-			// In the body's own space it stands along Z and faces +Y: the nod is about X and the
-			// turn about Z, with the turn applied last so the nod stays level.
+			// The nod is about X and the turn about Z, with the turn applied last so the nod stays level.
 			FTransform At = Posed.GetComponentSpaceTransform(Index);
 			const FQuat Nod(FVector::XAxisVector, FMath::DegreesToRadians(Pitch * Share.Part));
 			const FQuat Turn(FVector::ZAxisVector, FMath::DegreesToRadians(Yaw * Share.Part));
 			At.SetRotation((Turn * Nod * At.GetRotation()).GetNormalized());
+			if (Wrong > 0.f)
+			{
+				At.AddToTranslation(FVector(0.f, 0.f, Share.Lift * Wrong));
+				if (Share.Bone == FName(TEXT("head")))
+				{
+					// Longer along whichever of the bone's own axes points up the body, a touch narrower across.
+					const FQuat Rot = At.GetRotation();
+					const FVector Ups(FMath::Abs(Rot.GetAxisX().Z), FMath::Abs(Rot.GetAxisY().Z), FMath::Abs(Rot.GetAxisZ().Z));
+					FVector Scale(1.f - 0.05f * Wrong);
+					Scale[Ups.X >= Ups.Y && Ups.X >= Ups.Z ? 0 : (Ups.Y >= Ups.Z ? 1 : 2)] = 1.f + 0.2f * Wrong;
+					At.SetScale3D(At.GetScale3D() * Scale);
+				}
+			}
 			Posed.SetComponentSpaceTransform(Index, At);
+		}
+
+		// Carrying: the upper arms come forward, the forearms fold up and in across the chest.
+		if (Hold > 0.002f)
+		{
+			struct FArm { FName Upper; FName Lower; float Side; };
+			static const FArm Arms[] = { { TEXT("upperarm_l"), TEXT("lowerarm_l"), 1.f }, { TEXT("upperarm_r"), TEXT("lowerarm_r"), -1.f } };
+			for (const FArm& Arm : Arms)
+			{
+				const FCompactPoseBoneIndex Upper = Find(Arm.Upper);
+				const FCompactPoseBoneIndex Lower = Find(Arm.Lower);
+				if (!Upper.IsValid() || !Lower.IsValid())
+				{
+					continue;
+				}
+				FTransform At = Posed.GetComponentSpaceTransform(Upper);
+				At.SetRotation((FQuat(FVector::XAxisVector, FMath::DegreesToRadians(34.f * Hold)) * At.GetRotation()).GetNormalized());
+				Posed.SetComponentSpaceTransform(Upper, At);
+				At = Posed.GetComponentSpaceTransform(Lower);
+				const FQuat Fold(FVector::XAxisVector, FMath::DegreesToRadians(62.f * Hold));
+				const FQuat Inward(FVector::ZAxisVector, FMath::DegreesToRadians(42.f * Hold * Arm.Side));
+				At.SetRotation((Inward * Fold * At.GetRotation()).GetNormalized());
+				Posed.SetComponentSpaceTransform(Lower, At);
+			}
 		}
 		FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(Posed), Output.Pose);
 		return true;
@@ -110,4 +154,5 @@ void UHGPersonAnim::NativeUpdateAnimation(float DeltaSeconds)
 	// A head starts and stops gently and never snaps.
 	Yaw = FMath::FInterpTo(Yaw, WantYaw, DeltaSeconds, 3.2f);
 	Pitch = FMath::FInterpTo(Pitch, WantPitch, DeltaSeconds, 3.2f);
+	Hold = FMath::FInterpTo(Hold, WantHold, DeltaSeconds, 2.4f);
 }
