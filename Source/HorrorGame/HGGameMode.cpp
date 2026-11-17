@@ -457,7 +457,8 @@ void AHGGameMode::TickMom(float Dt, const AHGPlayer* Player, float SecondsToTen)
 	{
 		const FVector Eyes = MomSpot + FVector(0, 0, 155);
 		const FRotator Look = (((MomGlance > 0.f || bDoorOpen) ? Door : Child) - Eyes).Rotation();
-		MomAnim->LookTowards(FMath::FindDeltaAngleDegrees(Facing, Look.Yaw), Look.Pitch);
+		// Only part of the way down: a full bow to a child at her feet hid her face behind her hair.
+		MomAnim->LookTowards(FMath::FindDeltaAngleDegrees(Facing, Look.Yaw), FMath::Clamp(Look.Pitch * 0.4f, -12.f, 12.f));
 	}
 }
 
@@ -497,7 +498,7 @@ void AHGGameMode::TickDoctors(float Dt, const AHGPlayer* Player)
 			const FRotator Look = (Child - (At + FVector(0, 0, 160))).Rotation();
 			// Their eyes are on him from the moment the doorway lets them see him.
 			const bool bSees = Left < 260.f;
-			Anim->LookTowards(bSees ? FMath::FindDeltaAngleDegrees(Facing, Look.Yaw) : 0.f, bSees ? Look.Pitch : 0.f);
+			Anim->LookTowards(bSees ? FMath::FindDeltaAngleDegrees(Facing, Look.Yaw) : 0.f, bSees ? FMath::Clamp(Look.Pitch * 0.6f, -18.f, 18.f) : 0.f);
 		}
 	}
 }
@@ -603,7 +604,7 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 		Level->SetDoorOpen(FMath::SmoothStep(0.f, 1.f, DoorOpen));
 		WardTimer += Dt;
 		// With the doctors in the game the scene holds on them standing in the doorway.
-		if (WardTimer > (WardDoctors.Num() > 0 ? 13.f : 9.5f) && !bOver)
+		if (WardTimer > (WardDoctors.Num() > 0 ? 15.f : 9.5f) && !bOver)
 		{
 			bOver = true;
 			bWon = true;
@@ -904,8 +905,17 @@ void AHGGameMode::Tick(float DeltaSeconds)
 				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-3-mom"));
 				MomShot = 2;
 				ShotTimer = 0.f;
+				// And the same view while she glances at the door: her head goes, her body stays.
+				MomGlance = 4.f;
 			}
-			else if (ShotStep == 3 && (!WardMom || MomShot == 2) && ShotTimer > 0.5f)
+			else if (ShotStep == 3 && MomShot == 2 && ShotTimer > 1.8f)
+			{
+				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-3-glance.png"), true, false);
+				UE_LOG(LogHG, Log, TEXT("HGTEST SHOT ward-3-glance"));
+				MomShot = 3;
+				ShotTimer = 0.f;
+			}
+			else if (ShotStep == 3 && (!WardMom || MomShot == 3) && ShotTimer > 0.5f)
 			{
 				// The door wall, with the clock, then jump the clock to a few seconds before ten.
 				Player->SetActorLocation(FVector(-60, -40, 60));
@@ -936,7 +946,7 @@ void AHGGameMode::Tick(float DeltaSeconds)
 				++ShotStep;
 				ShotTimer = 0.f;
 			}
-			else if (ShotStep == 7 && WardDoctors.Num() > 0 && ShotTimer > 7.f)
+			else if (ShotStep == 7 && WardDoctors.Num() > 0 && ShotTimer > 5.5f)
 			{
 				// The doctors, stopped in the doorway, from where he sits on the floor.
 				FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / TEXT("ward-6-doctors.png"), true, false);
