@@ -51,6 +51,18 @@ public:
 	void CarryEyesTo(const FVector& Eyes);
 	/** Eases his gaze towards Target, the way a child's eyes are drawn to a face. He can pull away from it. */
 	void TurnTowards(const FVector& Target, float Dt, float Speed);
+	/**
+	 * Scene five: he is on his own feet again and can get down on his hands and knees (Ctrl or C,
+	 * held). Crawling is slow and silent and fits under beds and through gaps no adult can follow.
+	 */
+	void SetCrawlAllowed(bool bOn) { bCrawlAllowed = bOn; }
+	bool IsCrawling() const { return bIsCrouched; }
+	/** For the self-play check and the pictures: crawl without a key held. */
+	void ForceCrawl(bool bOn) { bForceCrawl = bOn; }
+	/** How far the noise he is making right now carries: nothing crawling or still, a little walking, a long way running. */
+	float NoiseRadius() const;
+	/** Throws the toy in his hands to where he is looking. It squeaks where it lands. */
+	void ThrowHeld();
 	/** 1.3 is the ward's bright colour, 1 is plain, 0 is none. */
 	void SetSaturation(float Saturation);
 	/** The lens angle in degrees. Narrower than the usual 92 for a face held close. */
@@ -87,6 +99,15 @@ private:
 	/** True in the story's first scene: a five-year-old's height, pace and hands; no flashlight, no weapons. */
 	bool bChild = false;
 	bool bCarried = false;
+	bool bCrawlAllowed = false;
+	bool bForceCrawl = false;
+
+	/** The toy in the air after a throw, and its flight. */
+	UPROPERTY()
+	TObjectPtr<class AHGToy> Tossed;
+	FVector ThrowFrom = FVector::ZeroVector;
+	FVector ThrowTo = FVector::ZeroVector;
+	float ThrowAlong = 0.f;
 	/** Degrees turned per mouse count. The minus and equals keys change it. */
 	float LookSpeed = 0.24f;
 

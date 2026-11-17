@@ -33,6 +33,17 @@ public:
 	FVector OpDoorSpot() const { return OpDoorAt; }
 	/** Scene four. The chair in that room: the middle of its seat, on the floor. It faces the door. */
 	FVector ChairSpot() const { return ChairAt; }
+	/**
+	 * Scene five, the escape. A second set of rooms, built well away from the first: the room he
+	 * wakes in, a long dark ward of beds, a corridor with a nurses' counter, and at its end the
+	 * room where his mother is. Everything about them is given from this corner.
+	 */
+	FVector EscapeOrigin() const { return EscapeAt; }
+	/** The door to the room his mother is in: 0 shut, 1 open. */
+	void SetMomDoorOpen(float Alpha);
+	/** Dims one of the escape's lamps: 1 is as built, 0 is out. */
+	void SetEscapeLamp(int32 Index, float Level);
+	int32 EscapeLampCount() const { return EscapeLamps.Num(); }
 	/** How far along the hall each of its ceiling lamps hangs, nearest the ward first. */
 	const TArray<float>& HallLampAlong() const { return HallLampY; }
 	/** Dims one of the hall's lamps: 1 is as built, 0 is out. */
@@ -119,6 +130,16 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> OpDoor;
+
+	UPROPERTY()
+	TObjectPtr<USceneComponent> MomDoor;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UPointLightComponent>> EscapeLamps;
+
+	TArray<float> EscapeLampFull;
+	FVector EscapeAt = FVector(3000, 0, 0);
+	void BuildEscape();
 
 	UPROPERTY()
 	TObjectPtr<UPointLightComponent> OpLight;

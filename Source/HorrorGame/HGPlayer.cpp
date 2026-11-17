@@ -118,6 +118,10 @@ void AHGPlayer::BeginPlay()
 		Camera->PostProcessSettings.ColorContrast = FVector4(1.18f, 1.18f, 1.18f, 1.f);
 		Flashlight->SetIntensity(0.f);
 		HandLight->SetIntensity(0.f);
+		// Down on hands and knees he is under half a metre tall.
+		GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+		GetCharacterMovement()->SetCrouchedHalfHeight(24.f);
+		GetCharacterMovement()->MaxWalkSpeedCrouched = 105.f;
 	}
 	if (Game && Game->GetVariant() == EHGVariant::Hospital)
 	{
@@ -202,6 +206,7 @@ void AHGPlayer::SetCarried(bool bOn)
 	GetCapsuleComponent()->SetCollisionEnabled(bOn ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
 	if (bOn)
 	{
+		UnCrouch();
 		GetCharacterMovement()->StopMovementImmediately();
 		GetCharacterMovement()->DisableMovement();
 	}
@@ -209,6 +214,46 @@ void AHGPlayer::SetCarried(bool bOn)
 	{
 		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 	}
+}
+
+float AHGPlayer::NoiseRadius() const
+{
+	if (bCarried || bIsCrouched)
+	{
+		return 0.f;
+	}
+	const float Speed = GetVelocity().Size2D();
+	return Speed > 230.f ? 950.f : (Speed > 60.f ? 240.f : 0.f);
+}
+
+void AHGPlayer::ThrowHeld()
+{
+	if (!Held)
+	{
+		return;
+	}
+	const FVector Eye = EyeLocation();
+	FCollisionQueryParams Params(FName(TEXT("HGThrow")), false, this);
+	Params.AddIgnoredActor(Held);
+	// As far as a five-year-old throws, or until something is in the way; then down to the floor.
+	FVector Lands = Eye + EyeForward() * 820.f;
+	FHitResult Hit;
+	if (GetWorld()->LineTraceSingleByChannel(Hit, Eye, Lands, ECC_Visibility, Params))
+	{
+		Lands = Hit.ImpactPoint + Hit.ImpactNormal * 14.f;
+	}
+	FHitResult Floor;
+	if (GetWorld()->LineTraceSingleByChannel(Floor, Lands + FVector(0, 0, 8), Lands - FVector(0, 0, 400), ECC_Visibility, Params))
+	{
+		Lands = Floor.ImpactPoint;
+	}
+	Tossed = Held;
+	Held = nullptr;
+	Tossed->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	ThrowFrom = Tossed->GetActorLocation();
+	ThrowTo = Lands;
+	ThrowAlong = 0.f;
+	UseKick = 1.f;
 }
 
 void AHGPlayer::CarryEyesTo(const FVector& Eyes)
@@ -513,6 +558,7 @@ void AHGPlayer::HandleKeys(APlayerController* PC, AHGGameMode* Game)
 	if (bChild)
 	{
 		if (!bCarried && (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton) || PC->WasInputKeyJustPressed(EKeys::E))) { Interact(); }
+		if (!bCarried && bCrawlAllowed && (PC->WasInputKeyJustPressed(EKeys::RightMouseButton) || PC->WasInputKeyJustPressed(EKeys::Q))) { ThrowHeld(); }
 		return;
 	}
 	if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton)) { UseItem(); }
@@ -603,6 +649,22 @@ void AHGPlayer::Tick(float DeltaSeconds)
 
 	HandleKeys(PC, Game);
 
+	if (Tossed)
+	{
+		// The toy goes over in a low arc and squeaks when it comes down, which is the point of throwing it.
+		ThrowAlong = FMath::Min(1.f, ThrowAlong + DeltaSeconds / 0.6f);
+		Tossed->SetActorLocation(FMath::Lerp(ThrowFrom, ThrowTo, ThrowAlong) + FVector(0.f, 0.f, 70.f * FMath::Sin(ThrowAlong * PI)));
+		if (ThrowAlong >= 1.f)
+		{
+			if (!HG::Extra(this, TEXT("squeak"), ThrowTo, 1.f, 1.f))
+			{
+				HG::Play(this, TEXT("pickup"), 0.6f, 1.3f);
+			}
+			Game->ToyLanded(ThrowTo);
+			Tossed = nullptr;
+		}
+	}
+
 	if (bDead)
 	{
 		// The camera ends up on the floor, on its side, like the rest of you.
@@ -633,6 +695,22 @@ void AHGPlayer::Tick(float DeltaSeconds)
 		return;
 	}
 
+	if (bChild)
+	{
+		// Hands and knees while the key is held. Getting up again waits until there is room to.
+		const bool bWantsDown = bCrawlAllowed && (bForceCrawl || PC->IsInputKeyDown(EKeys::LeftControl) || PC->IsInputKeyDown(EKeys::C));
+		if (bWantsDown && !bIsCrouched)
+		{
+			Crouch();
+		}
+		else if (!bWantsDown && bIsCrouched)
+		{
+			UnCrouch();
+		}
+		const FVector Want(0.f, 0.f, bIsCrouched ? 4.f : 42.f);
+		Camera->SetRelativeLocation(FMath::VInterpTo(Camera->GetRelativeLocation(), Want, DeltaSeconds, 9.f));
+	}
+
 	// Move.
 	const float Forward = (PC->IsInputKeyDown(EKeys::W) ? 1.f : 0.f) - (PC->IsInputKeyDown(EKeys::S) ? 1.f : 0.f);
 	const float Right = (PC->IsInputKeyDown(EKeys::D) ? 1.f : 0.f) - (PC->IsInputKeyDown(EKeys::A) ? 1.f : 0.f);
@@ -650,6 +728,11 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	{
 		StepBank = 0.f;
 		const bool bRunning = Speed > WalkSpeed + 40.f;
+		if (bIsCrouched)
+		{
+			// Hands and knees make no sound worth the name.
+			return;
+		}
 		if (!bTiptoe)
 		{
 			Game->ReportNoise(GetActorLocation(), bRunning ? 2000.f : 650.f, 2.f, true);
