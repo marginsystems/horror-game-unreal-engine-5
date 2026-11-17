@@ -408,7 +408,7 @@ void AHGGameMode::PopulateWard()
 	UE_LOG(LogHG, Log, TEXT("HGTEST DOCTORS spawned=%d"), WardDoctors.Num());
 
 	// Scene three: two more people stand in the corridor, one by the left wall and one by the right.
-	// They are the same two doctors over again, which is how he remembers every adult in that building.
+	// They are the same two doctors over again, which is how a frightened child sees every adult in that building.
 	if (WardDoctors.Num() == 2)
 	{
 		// Both on the left: he is on the doctor's left shoulder, and her head hides whatever is on the right.
@@ -763,7 +763,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			}
 			if (MomFaceAnim)
 			{
-				// The small sad smile he remembers.
+				// A small sad smile.
 				MomFaceAnim->SetWarm(0.6f);
 				MomFaceAnim->SetSad(0.85f);
 			}
@@ -2213,7 +2213,7 @@ void AHGGameMode::TickEnding(float Dt, AHGPlayer* Player)
 				bWon = true;
 				EndTitle = TEXT("THE END");
 				EndLines.Reset();
-				EndLines.Add(TEXT("Inspired in part by a true story."));
+				EndLines.Add(TEXT("Inspired by true accounts."));
 				EndLines.Add(TEXT("Thank you for playing."));
 				UE_LOG(LogHG, Log, TEXT("HGTEST ENDING done seconds=%d catches=%d"), FMath::RoundToInt32(RoundSeconds), Catches);
 			}
@@ -3095,7 +3095,7 @@ namespace
 		static const TArray<FString> Pages[] = {
 			{
 				TEXT("IT WAS NOT UNUSUAL"),
-				TEXT("What he remembers matches how adenoids, and often tonsils, were taken out of children"),
+				TEXT("What happens in this story is how adenoids, and often tonsils, were taken out of children"),
 				TEXT("in Soviet and 1990s Russian clinics: awake, held on an adult's lap or tied to the chair."),
 				TEXT(""),
 				TEXT("A surgeon writes that it used to be done \"without anaesthesia, practically alive\"."),
@@ -3124,8 +3124,8 @@ namespace
 				TEXT("medicina.ru:  /press-tsentr/statyi/operatsiya-po-udaleniyu-adenoidov-eto-ne-tragediya"),
 				TEXT("LiveJournal:  masterok.livejournal.com/6814032.html"),
 				TEXT(""),
-				TEXT("Inspired in part by a true story. The opening, up to the operation, is the author's own memory."),
-				TEXT("Everything after it, the escape through the hospital, is invented."),
+				TEXT("Inspired by true accounts of how these operations were done."),
+				TEXT("The boy, his mother, the doctors, the hospital and the escape through it are invented."),
 			},
 		};
 		return Pages[FMath::Clamp(Page, 0, 3)];
@@ -3373,7 +3373,7 @@ void AHGHUD::DrawHUD()
 			const float T = Game->CineElapsed();
 			const float Alpha = FMath::Clamp(FMath::Min(T - 0.6f, 4.2f - T), 0.f, 1.f);
 			Centered(TEXT("RUSSIA, 1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha), FaceLight);
-			Centered(TEXT("Inspired in part by a true story."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
+			Centered(TEXT("Inspired by true accounts."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
 			return;
 		}
 		if (!Player || !Player->IsCarried())

@@ -1,14 +1,14 @@
 # Horror Game (Unreal Engine 5)
 
-An open source horror game built with Unreal Engine 5.8, inspired in part by a true story.
+An open source horror game built with Unreal Engine 5.8, inspired by true accounts.
 
 Russia, around 1997. You are five years old, in a children's hospital, playing on the floor
 of a bright ward room with your mother beside you. Then the doctors come in.
 
-The opening is the author's own memory; the escape that follows is invented. The real part was
-not unusual: children of that time and place had
-operations awake, held on an adult's lap. [The story](docs/STORY.md) tells what happened, what
-the game does with it, and what medical sources say about why it was done that way.
+The boy and the hospital are invented, and so is the escape. What is done to him was not
+unusual: children of that time and place had operations awake, held on an adult's lap.
+[The story](docs/STORY.md) tells what the game shows and what medical sources say about why it
+was done that way.
 
 The story can now be played from beginning to end in rough form, about eight minutes:
 

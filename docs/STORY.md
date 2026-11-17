@@ -1,24 +1,25 @@
 # The story
 
-This game is inspired in part by a true story. The opening, up to the operation, is the author's
-own memory. Everything after it, the escape through the hospital, is invented.
+This game is inspired by true accounts of how children's throat operations were done in Soviet
+and 1990s Russian clinics. The boy, his mother, the doctors and the hospital are invented, and
+so is everything after the operation: the escape through the hospital.
 
-## What happened
+## What happens
 
-A children's hospital in Russia, around 1997. He was about five. He was in a ward room with
-his mother, playing on the floor, in a good mood. Doctors came in. His mother understood he
-needed an operation and handed him over. He cried and asked for her. He was carried down a
-long hallway to a room where it was done with no general anaesthetic: a doctor held him on her
-lap in a chair, his eyes were covered with cloth, and he was awake for all of it. He does not
-remember pain. He remembers a great deal of blood. It stayed with him for a long time.
+A children's hospital in Russia, around 1997. A boy of about five is in a ward room with his
+mother, playing on the floor, in a good mood. Doctors come in. His mother understands he needs
+an operation and hands him over. He cries and asks for her. He is carried down a long hallway
+to a room where it is done with no general anaesthetic: a doctor holds him on her lap in a
+chair, his eyes are covered with cloth, and he is awake for all of it. What stays with him is
+not pain. It is a great deal of blood.
 
-The game follows the memory up to the chair. Then it leaves it: the child gets away.
+The game follows that as far as the chair. Then it leaves it: the child gets away.
 
 ## It was not unusual
 
-Nobody knows now which operation it was. What he remembers matches how adenoids, and often
-tonsils, were removed from children in Soviet and 1990s Russian clinics. This is what
-Russian-language sources say, each checked against the page it comes from:
+The operation in the game is how adenoids, and often tonsils, were removed from children in
+Soviet and 1990s Russian clinics. This is what Russian-language sources say, each checked
+against the page it comes from:
 
 - **It was done awake.** An ear, nose and throat surgeon writes that adenoids used to be
   removed "without anaesthesia, practically alive", with an adenotome, a curved knife shaped
@@ -43,8 +44,8 @@ and it is only a guess: a child who is awake, upright and leaning forward bleeds
 mouth instead of into the airway, and a lap and a pair of arms hold a five-year-old still for
 the minute it takes.
 
-Whether he was given anything for the pain, nobody can say. Numbing drops or an injection
-were part of the method as described; he remembers no pain, and he was five.
+The sources describe numbing drops or an injection as part of the method. In the game the boy
+feels no pain he could name afterwards; he is five.
 
 This is not told to blame anyone. The people in that room were doing what they had been
 taught was normal. It is told because a great many children went through it, and almost
@@ -74,8 +75,7 @@ After the ending, the text of "It was not unusual" is shown to the player, with 
 - **Mom.** Blonde, straight hair past her shoulders with a fringe, blue eyes. A soft sweater,
   jeans, house shoes. Calm. She is the only warm thing
   in the building and the thing the whole escape points at.
-- **The doctors.** Both women, as he remembers them: the one who held him on her lap in the
-  chair, and a second one. Seen the way a child sees them. At the door they are ordinary, polite
+- **The doctors.** Both women: the one who holds him on her lap in the chair, and a second one. Seen the way a child sees them. At the door they are ordinary, polite
   people in white. From the moment he is taken out of his mother's arms they begin to change,
   too slowly to catch: the one walking behind grows taller, their necks and faces lengthen,
   their eyes open too wide and stop blinking, and a smile spreads and stays. By the escape
@@ -108,7 +108,7 @@ Decided: the game is aimed at players of 16 and over.
   the corridor.
 - **The cutting is never shown.** No instruments in a child's mouth, no wounds on a child's
   body. His eyes were covered; the player sees what he saw.
-- **A warning at the start** says what the game is: inspired in part by a true story, a child's
+- **A warning at the start** says what the game is: inspired by true accounts, a child's
   medical procedure, blood and distress.
 - **A "less blood" setting** for players who want the story without the red. For now it is
   the `-HGLessBlood` switch on the command line: what soaks into the cloth is dark and has no colour.
