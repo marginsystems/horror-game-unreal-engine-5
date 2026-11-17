@@ -64,6 +64,11 @@ public:
 	FString Message;
 	float MessageUntil = 0.f;
 	FString EndTitle;
+	/** A chapter card shown over the picture for a few seconds, and when it came up. */
+	FString CardText;
+	float CardStart = -100.f;
+	/** How far the picture has burned out to white, from 0 to 1. */
+	float WhiteOut = 0.f;
 	TArray<FString> EndLines;
 	float RoundSeconds = 0.f;
 
@@ -156,6 +161,49 @@ private:
 	 * doctors look like people.
 	 */
 	void TickHandover(float Dt, AHGPlayer* Player);
+
+	/**
+	 * Scene three, the corridor: the rest of the carry. The hall goes on too long and grows too
+	 * tall, the lamps go out behind him one after another, the people they pass turn out to have
+	 * the doctors' faces and fall in behind, and the doctor who was following goes ahead to hold
+	 * open a door on the left. It ends in the white of the room behind it.
+	 */
+	void TickCorridor(float Dt, AHGPlayer* Player, float Wrong);
+
+	/** The people standing in the corridor: the same two faces again. Hidden until the corridor begins. */
+	UPROPERTY()
+	TArray<TObjectPtr<AActor>> Staff;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UHGPersonAnim>> StaffAnims;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UHGFaceAnim>> StaffFaces;
+
+	UPROPERTY()
+	TObjectPtr<class UAudioComponent> HeartBed;
+
+	bool bCorridor = false;
+	bool bCorridorDone = false;
+	float CorridorTimer = 0.f;
+	/** Bit i is set once staff member i has turned to follow, and again in the second mask once walking. */
+	int32 StaffJoined = 0;
+	int32 StaffWalking = 0;
+	int32 LampsOut = 0;
+	float LampWait = 0.f;
+	TArray<float> LampLevel;
+	float StepWait = 0.f;
+	float EchoWait = -1.f;
+	int32 StepCount = 0;
+	bool bOvertaking = false;
+	int32 OvertakeLeg = 0;
+	FVector OvertakeVia = FVector::ZeroVector;
+	bool bOpDoor = false;
+	float OpDoorOpen = 0.f;
+	float WhiteHeld = 0.f;
+	bool bNearlySaid = false;
+	bool bHereSaid = false;
+	bool bCartHeard = false;
 	/** Moves a person a step towards To, on the walk clip. True once they are there and standing. */
 	bool WalkPerson(AActor* Person, UHGPersonAnim* Anim, const FVector& To, float Speed, float ClipRate, float Dt);
 	void FacePerson(AActor* Person, const FVector& Point, float Dt, float Speed) const;
