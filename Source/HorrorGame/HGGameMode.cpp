@@ -2162,7 +2162,7 @@ void AHGGameMode::TickEnding(float Dt, AHGPlayer* Player)
 	{
 		// What was true, a page at a time. Each stays until it is read or a key sends it on.
 		ClosingTimer += Dt;
-		const float Stay = (bBot || bShots) ? 3.f : 16.f;
+		const float Stay = (bBot || bShots) ? 5.f : 16.f;
 		const float In = ClosingPage == 0 ? 1.4f : 0.2f;
 		ClosingCover = ClosingPage == 0 ? FMath::SmoothStep(0.f, 1.4f, ClosingTimer) : 1.f;
 		ClosingInk = FMath::SmoothStep(In, In + 1.f, ClosingTimer) * (1.f - FMath::SmoothStep(Stay - 0.8f, Stay, ClosingTimer));
