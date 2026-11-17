@@ -302,6 +302,13 @@ namespace HG
 		}
 	}
 
+	UAudioComponent* VoiceBed(const UObject* Context, const TCHAR* Name, float Volume)
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/V_%s.V_%s"), Name, Name);
+		USoundBase* Found = LoadObject<USoundBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		return Found ? UGameplayStatics::SpawnSound2D(Context, Found, Volume) : nullptr;
+	}
+
 	static USoundBase* ExtraSound(const TCHAR* Name)
 	{
 		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/X_%s.X_%s"), Name, Name);

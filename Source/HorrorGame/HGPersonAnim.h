@@ -40,6 +40,12 @@ public:
 	 */
 	void SetWrong(float Alpha) { Wrong = FMath::Clamp(Alpha, 0.f, 1.f); }
 
+	/**
+	 * 1 seats the person: thighs forward, shins down. The actor has to be lowered by whoever asks
+	 * for it (about 38 units puts the hips on a chair seat 50 high). Set at once, not eased.
+	 */
+	void SetSit(float Alpha) { Sit = FMath::Clamp(Alpha, 0.f, 1.f); }
+
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 protected:
@@ -60,4 +66,5 @@ private:
 	float WantHold = 0.f;
 	float Hold = 0.f;
 	float Wrong = 0.f;
+	float Sit = 0.f;
 };

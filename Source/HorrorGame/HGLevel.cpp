@@ -956,7 +956,7 @@ void AHGLevel::BuildWard()
 				Painted(this, OpDoor, TEXT("Sphere"), FVector(-9, DoorWide - 12.f, 100.f * Grow), FVector(0.07f), FLinearColor(0.75f, 0.6f, 0.2f));
 
 				// The room behind it: white, too bright, and one chair.
-				const float RoomNear = HallFar + T, RoomFar = HallFar + T + 420.f, RoomHalf = 230.f, RoomHigh = 330.f;
+				const float RoomNear = HallFar + T, RoomFar = HallFar + T + 420.f, RoomHalf = 230.f, RoomHigh = 400.f;
 				const FLinearColor Tiled(0.92f, 0.93f, 0.95f);
 				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, -10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tiled, true);
 				Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid, RoomHigh + 10), FVector((RoomFar - RoomNear) / 100.f, RoomHalf * 0.02f, 0.2f), Tiled, true);
@@ -965,19 +965,37 @@ void AHGLevel::BuildWard()
 				{
 					Painted(this, Root, TEXT("Cube"), FVector((RoomNear + RoomFar) * 0.5f, Mid + Side * (RoomHalf + T * 0.5f), RoomHigh * 0.5f), FVector((RoomFar - RoomNear) / 100.f, T / 100.f, RoomHigh / 100.f), Tiled, true);
 				}
+				// The wall the door is in is the hall's brick on its other side; in here it is tiled like the rest.
+				Painted(this, Root, TEXT("Cube"), FVector(RoomNear + 1.f, (Mid - RoomHalf + Low) * 0.5f, RoomHigh * 0.5f), FVector(0.02f, (Low - (Mid - RoomHalf)) / 100.f, RoomHigh / 100.f), Tiled);
+				Painted(this, Root, TEXT("Cube"), FVector(RoomNear + 1.f, (Mid + RoomHalf + Top) * 0.5f, RoomHigh * 0.5f), FVector(0.02f, ((Mid + RoomHalf) - Top) / 100.f, RoomHigh / 100.f), Tiled);
+				Painted(this, Root, TEXT("Cube"), FVector(RoomNear + 1.f, Mid, (RoomHigh + DoorTall) * 0.5f), FVector(0.02f, DoorWide / 100.f, (RoomHigh - DoorTall) / 100.f), Tiled);
 				OpLight = Lamp(this, Root, FVector(RoomNear + 200, Mid, RoomHigh - 40), FLinearColor(0.92f, 0.97f, 1.f), 0.f, 900.f, false);
 				// The chair, facing the door, and a small table with a tray beside it.
 				const FLinearColor Seat(0.42f, 0.16f, 0.05f), Steel(0.5f, 0.52f, 0.55f);
 				const FVector Chair(RoomNear + 250, Mid, 0);
+				ChairAt = Chair;
 				Painted(this, Root, TEXT("Cube"), Chair + FVector(0, 0, 47), FVector(0.5f, 0.5f, 0.07f), Seat);
 				Painted(this, Root, TEXT("Cube"), Chair + FVector(27, 0, 92), FVector(0.07f, 0.5f, 0.86f), Seat);
 				for (const FVector& Leg : { FVector(-21, -21, 22), FVector(-21, 21, 22), FVector(21, -21, 22), FVector(21, 21, 22) })
 				{
 					Painted(this, Root, TEXT("Cube"), Chair + Leg, FVector(0.05f, 0.05f, 0.44f), Steel);
 				}
-				Painted(this, Root, TEXT("Cube"), Chair + FVector(10, 95, 70), FVector(0.4f, 0.55f, 0.03f), Steel);
-				Painted(this, Root, TEXT("Cube"), Chair + FVector(10, 95, 35), FVector(0.05f, 0.05f, 0.7f), Steel);
-				Painted(this, Root, TEXT("Cube"), Chair + FVector(10, 95, 73.5f), FVector(0.26f, 0.36f, 0.02f), FLinearColor(0.9f, 0.9f, 0.88f));
+				// The table stands ahead of the chair and to its left, where he can see what is laid out on it:
+				// a tray under a folded cloth, and an enamel basin.
+				const FVector Table = Chair + FVector(-105, 118, 0);
+				Painted(this, Root, TEXT("Cube"), Table + FVector(0, 0, 70), FVector(0.42f, 0.6f, 0.03f), Steel);
+				for (const FVector& Leg : { FVector(-17, -26, 35), FVector(-17, 26, 35), FVector(17, -26, 35), FVector(17, 26, 35) })
+				{
+					Painted(this, Root, TEXT("Cube"), Table + Leg, FVector(0.04f, 0.04f, 0.7f), Steel);
+				}
+				Painted(this, Root, TEXT("Cube"), Table + FVector(0, -10, 73.5f), FVector(0.28f, 0.34f, 0.02f), FLinearColor(0.9f, 0.9f, 0.88f));
+				Painted(this, Root, TEXT("Cube"), Table + FVector(0, -10, 76.f), FVector(0.22f, 0.26f, 0.03f), FLinearColor(0.97f, 0.97f, 0.96f));
+				Painted(this, Root, TEXT("Sphere"), Table + FVector(0, 20, 76.f), FVector(0.2f, 0.2f, 0.09f), FLinearColor(0.95f, 0.95f, 0.93f));
+				// A lamp on a stand, turned on the chair.
+				const FVector Stand = Chair + FVector(-70, -125, 0);
+				Painted(this, Root, TEXT("Cube"), Stand + FVector(0, 0, 90), FVector(0.035f, 0.035f, 1.8f), Steel);
+				Painted(this, Root, TEXT("Cube"), Stand + FVector(0, 0, 3), FVector(0.4f, 0.4f, 0.05f), Steel);
+				Painted(this, Root, TEXT("Sphere"), Stand + FVector(8, 10, 184), FVector(0.3f, 0.3f, 0.16f), FLinearColor(1.f, 1.f, 0.97f), false, 5.f);
 			}
 			else
 			{

@@ -31,6 +31,8 @@ public:
 	void SetOpDoorOpen(float Alpha);
 	/** The middle of that doorway, on the floor. */
 	FVector OpDoorSpot() const { return OpDoorAt; }
+	/** Scene four. The chair in that room: the middle of its seat, on the floor. It faces the door. */
+	FVector ChairSpot() const { return ChairAt; }
 	/** How far along the hall each of its ceiling lamps hangs, nearest the ward first. */
 	const TArray<float>& HallLampAlong() const { return HallLampY; }
 	/** Dims one of the hall's lamps: 1 is as built, 0 is out. */
@@ -127,6 +129,7 @@ private:
 	TArray<float> HallLampY;
 	TArray<float> HallLampFull;
 	FVector OpDoorAt = FVector::ZeroVector;
+	FVector ChairAt = FVector::ZeroVector;
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> HourHand;

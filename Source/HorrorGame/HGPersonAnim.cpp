@@ -16,6 +16,7 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 	float Pitch = 0.f;
 	float Hold = 0.f;
 	float Wrong = 0.f;
+	float Sit = 0.f;
 
 	virtual void PreUpdate(UAnimInstance* InAnimInstance, float DeltaSeconds) override
 	{
@@ -27,6 +28,7 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		Pitch = Person->Pitch;
 		Hold = Person->Hold;
 		Wrong = Person->Wrong;
+		Sit = Person->Sit;
 	}
 
 	virtual bool Evaluate(FPoseContext& Output) override
@@ -45,7 +47,7 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		const FVector RootAt = Root.GetTranslation();
 		Root.SetTranslation(FVector(0.f, 0.f, RootAt.Z));
 
-		if (FMath::IsNearlyZero(Yaw, 0.05f) && FMath::IsNearlyZero(Pitch, 0.05f) && Hold < 0.002f && Wrong < 0.002f)
+		if (FMath::IsNearlyZero(Yaw, 0.05f) && FMath::IsNearlyZero(Pitch, 0.05f) && Hold < 0.002f && Wrong < 0.002f && Sit < 0.002f)
 		{
 			return true;
 		}
@@ -92,6 +94,28 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 				}
 			}
 			Posed.SetComponentSpaceTransform(Index, At);
+		}
+
+		// Sitting: the thighs swing forward to level and the shins hang straight down from the knees.
+		if (Sit > 0.002f)
+		{
+			struct FLeg { FName Thigh; FName Calf; };
+			static const FLeg Legs[] = { { TEXT("thigh_l"), TEXT("calf_l") }, { TEXT("thigh_r"), TEXT("calf_r") } };
+			for (const FLeg& Leg : Legs)
+			{
+				const FCompactPoseBoneIndex Thigh = Find(Leg.Thigh);
+				const FCompactPoseBoneIndex Calf = Find(Leg.Calf);
+				if (!Thigh.IsValid() || !Calf.IsValid())
+				{
+					continue;
+				}
+				FTransform At = Posed.GetComponentSpaceTransform(Thigh);
+				At.SetRotation((FQuat(FVector::XAxisVector, FMath::DegreesToRadians(86.f * Sit)) * At.GetRotation()).GetNormalized());
+				Posed.SetComponentSpaceTransform(Thigh, At);
+				At = Posed.GetComponentSpaceTransform(Calf);
+				At.SetRotation((FQuat(FVector::XAxisVector, FMath::DegreesToRadians(-86.f * Sit)) * At.GetRotation()).GetNormalized());
+				Posed.SetComponentSpaceTransform(Calf, At);
+			}
 		}
 
 		// Carrying: the upper arms come forward, the forearms fold up and in across the chest.

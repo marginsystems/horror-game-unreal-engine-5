@@ -69,6 +69,21 @@ public:
 	float CardStart = -100.f;
 	/** How far the picture has burned out to white, from 0 to 1. */
 	float WhiteOut = 0.f;
+	/**
+	 * Scene four, the cloth over his eyes. ClothDown is how far it has been drawn down over the
+	 * picture; ClothRed how far the red has soaked into it (past 1 it is everywhere); ClothLoom
+	 * how close the shadow of whoever is bending over him has come; ClothBusy how much hands are
+	 * moving behind it; ClothShift where he has turned his head under it, each way from -1 to 1.
+	 */
+	float ClothDown = 0.f;
+	float ClothRed = 0.f;
+	float ClothLoom = 0.f;
+	float ClothBusy = 0.f;
+	FVector2D ClothShift = FVector2D::ZeroVector;
+	/** The picture going to black, from 0 to 1. */
+	float BlackOut = 0.f;
+	/** -HGLessBlood: the story without the red. What soaks into the cloth is dark and colourless. */
+	bool bLessBlood = false;
 	TArray<FString> EndLines;
 	float RoundSeconds = 0.f;
 
@@ -169,6 +184,23 @@ private:
 	 * open a door on the left. It ends in the white of the room behind it.
 	 */
 	void TickCorridor(float Dt, AHGPlayer* Player, float Wrong);
+
+	/**
+	 * Scene four, the chair. He is on the doctor's lap, facing the room. He is shown the room for
+	 * a few seconds, then a cloth is put over his eyes and everything after that is the cloth:
+	 * light through it, shadows on it, voices dulled by it, and red coming up into it from below.
+	 * Nothing that is done to him is shown.
+	 */
+	void TickChair(float Dt, AHGPlayer* Player);
+
+	UPROPERTY()
+	TObjectPtr<class UAudioComponent> RingBed;
+
+	bool bChair = false;
+	bool bChairDone = false;
+	float ChairTimer = 0.f;
+	int32 ChairCues = 0;
+	FRotator ChairLook = FRotator::ZeroRotator;
 
 	/** The people standing in the corridor: the same two faces again. Hidden until the corridor begins. */
 	UPROPERTY()
@@ -299,5 +331,21 @@ private:
 	/** Scale 1 is the engine font's own 9 points; text is rasterised at the final size, never stretched. */
 	void Write(const FString& Text, const FLinearColor& Color, float X, float Y, float Scale, FName Face = NAME_None);
 	float Measure(const FString& Text, float Scale, FName Face = NAME_None) const;
+
+	/** Paints the cloth over the picture: see the Cloth fields of AHGGameMode. */
+	void DrawCloth(const AHGGameMode* Game, float W, float H, float Now);
+
+	/** The cloth is a small picture worked out a few times a second and stretched over the screen. */
+	UPROPERTY()
+	TObjectPtr<class UTexture2D> Cloth;
+
+	/** The weave, a few pixels across, tiled over it at full sharpness. */
+	UPROPERTY()
+	TObjectPtr<class UTexture2D> Weave;
+
+	TArray<FColor> ClothPixels;
+	/** For each point of the cloth, how late the red reaches it: 0 where it starts, about 1 at the far corners. */
+	TArray<float> ClothWet;
+	float ClothNext = 0.f;
 	void Centered(const FString& Text, float Y, float Scale, const FLinearColor& Color, FName Face = NAME_None);
 };
