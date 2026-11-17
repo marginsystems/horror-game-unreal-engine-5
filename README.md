@@ -2,7 +2,7 @@
 
 An open source horror game built with Unreal Engine 5.8, inspired by true accounts.
 
-Russia, around 1997. You are five years old, in a children's hospital, playing on the floor
+1997. You are five years old, in a children's hospital, playing on the floor
 of a bright ward room with your mother beside you. Then the doctors come in.
 
 The boy and the hospital are invented, and so is the escape. What is done to him was not

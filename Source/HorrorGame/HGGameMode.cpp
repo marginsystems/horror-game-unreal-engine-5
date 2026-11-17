@@ -3372,7 +3372,7 @@ void AHGHUD::DrawHUD()
 			// The title sits over the first shot and is gone before the second.
 			const float T = Game->CineElapsed();
 			const float Alpha = FMath::Clamp(FMath::Min(T - 0.6f, 4.2f - T), 0.f, 1.f);
-			Centered(TEXT("RUSSIA, 1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha), FaceLight);
+			Centered(TEXT("1997"), H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha), FaceLight);
 			Centered(TEXT("Inspired by true accounts."), H * 0.52f, 1.3f * S, FLinearColor(1.f, 1.f, 1.f, Alpha * 0.85f));
 			return;
 		}
