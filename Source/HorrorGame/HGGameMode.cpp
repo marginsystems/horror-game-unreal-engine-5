@@ -13,6 +13,8 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture.h"
+#include "Engine/Texture2D.h"
+#include "TextureResource.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "ReferenceSkeleton.h"
 #include "Components/ExponentialHeightFogComponent.h"
@@ -59,6 +61,8 @@ void AHGGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 		FParse::Value(FCommandLine::Get(), TEXT("Variant="), Key);
 	}
 	Variant = HG::VariantFromKey(Key);
+	bLessBlood = FParse::Param(FCommandLine::Get(), TEXT("HGLessBlood"));
+	FParse::Value(FCommandLine::Get(), TEXT("HGScene="), StartScene);
 	bBot = FParse::Param(FCommandLine::Get(), TEXT("HGBot"));
 	bShots = FParse::Param(FCommandLine::Get(), TEXT("HGShots"));
 	bCatch = FParse::Param(FCommandLine::Get(), TEXT("HGCatch"));
@@ -422,7 +426,8 @@ void AHGGameMode::PopulateWard()
 
 	// The lines spoken in scenes one and two. They live with the people, in the private plugin.
 	static const TCHAR* Lines[] = { TEXT("mom_shapes"), TEXT("mom_good"), TEXT("mom_rabbit"), TEXT("mom_thanks"), TEXT("mom_doctors"),
-		TEXT("doc_ready"), TEXT("mom_lift"), TEXT("doc_take"), TEXT("doc_hush"), TEXT("doc_nearly"), TEXT("doc_here") };
+		TEXT("doc_ready"), TEXT("mom_lift"), TEXT("doc_take"), TEXT("doc_hush"), TEXT("doc_nearly"), TEXT("doc_here"),
+		TEXT("chair_sit"), TEXT("chair_cover"), TEXT("chair_still"), TEXT("chair_hold"), TEXT("chair_shh"), TEXT("chair_done") };
 	for (const TCHAR* Line : Lines)
 	{
 		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/V_%s.V_%s"), Line, Line);
@@ -439,7 +444,8 @@ void AHGGameMode::PopulateWard()
 	UE_LOG(LogHG, Log, TEXT("HGTEST VOICES found=%d/%d"), VoicesFound, static_cast<int32>(UE_ARRAY_COUNT(Lines)));
 
 	// The corridor's own sounds: her shoes, the rumble, his heart, voices behind a door, a cart, the last door.
-	static const TCHAR* CorridorSounds[] = { TEXT("step_hard_1"), TEXT("step_hard_2"), TEXT("hall_low"), TEXT("heart"), TEXT("hall_voices"), TEXT("cart"), TEXT("op_door") };
+	static const TCHAR* CorridorSounds[] = { TEXT("step_hard_1"), TEXT("step_hard_2"), TEXT("hall_low"), TEXT("heart"), TEXT("hall_voices"), TEXT("cart"), TEXT("op_door"),
+		TEXT("tray"), TEXT("glove"), TEXT("cloth"), TEXT("instrument"), TEXT("chair_creak"), TEXT("ring") };
 	for (const TCHAR* Name : CorridorSounds)
 	{
 		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/X_%s.X_%s"), Name, Name);
@@ -639,6 +645,11 @@ void AHGGameMode::PersonLooks(const AActor* Person, UHGPersonAnim* Anim, const F
 
 void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 {
+	if (bChair)
+	{
+		TickChair(Dt, Player);
+		return;
+	}
 	AActor* Woman = WardDoctors[0];
 	AActor* Man = WardDoctors[1];
 	UHGPersonAnim* WomanAnim = DoctorAnims[0];
@@ -1141,16 +1152,244 @@ void AHGGameMode::TickCorridor(float Dt, AHGPlayer* Player, float Wrong)
 		if (WomanAt.X > Door.X + 40.f) { Shot(14, TEXT("ward-21-room.png")); }
 	}
 
-	if (WhiteHeld > 1.6f && !bOver)
+	if (WhiteHeld > 1.6f && !bChair)
+	{
+		// End of the third scene. Behind the white he is turned round and sat down.
+		bCorridorDone = true;
+		bChair = true;
+		UE_LOG(LogHG, Log, TEXT("HGTEST CORRIDOR done seconds=%d lamps=%d/%d staff=%d"), FMath::RoundToInt32(RoundSeconds), LampsOut, LampAlong.Num(), StaffWalking);
+	}
+}
+
+void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
+{
+	AActor* Woman = WardDoctors[0];
+	AActor* Man = WardDoctors[1];
+	UHGPersonAnim* WomanAnim = DoctorAnims[0];
+	UHGPersonAnim* ManAnim = DoctorAnims[1];
+	const FVector Chair = Level->ChairSpot();
+	const FVector Door = Level->OpDoorSpot();
+	const bool bFirst = ChairTimer <= 0.f;
+	ChairTimer += Dt;
+	const float T = ChairTimer;
+	auto Once = [this](int32 Bit)
+	{
+		const bool bNew = !(ChairCues & (1 << Bit));
+		ChairCues |= 1 << Bit;
+		return bNew;
+	};
+	auto Shot = [this](int32 Bit, const TCHAR* Name)
+	{
+		if (bShots && !(HandShots & (1 << Bit)))
+		{
+			HandShots |= 1 << Bit;
+			FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Shots") / Name, true, false);
+			UE_LOG(LogHG, Log, TEXT("HGTEST SHOT %s"), Name);
+		}
+	};
+	// Under the cloth every voice and every sound in the room is dull, as if through a wall.
+	auto Dull = [](UAudioComponent* Sound)
+	{
+		if (Sound)
+		{
+			Sound->SetLowPassFilterEnabled(true);
+			Sound->SetLowPassFilterFrequency(620.f);
+		}
+	};
+
+	if (bFirst)
+	{
+		// She sits in the chair, facing the door, with him on her lap and her arms round him.
+		Woman->SetActorLocationAndRotation(FVector(Chair.X + 4.f, Chair.Y, -38.f), FRotator(0.f, 180.f + MomYawOffset, 0.f));
+		if (WomanAnim)
+		{
+			WomanAnim->SetClip(PersonIdle);
+			WomanAnim->SetSit(1.f);
+			WomanAnim->SetHold(1.f);
+			WomanAnim->LookTowards(0.f, -8.f);
+		}
+		// The other doctor is at the table, with his back half turned, busy with what is on it.
+		Man->SetActorLocationAndRotation(FVector(Chair.X - 105.f, Chair.Y + 64.f, 0.f), FRotator(0.f, 90.f + MomYawOffset, 0.f));
+		if (ManAnim)
+		{
+			ManAnim->SetClip(PersonIdle);
+		}
+		// The two who followed stand just inside the door and watch.
+		static const FVector Inside[] = { FVector(58, -30, 0), FVector(50, 32, 0) };
+		for (int32 i = 0; i < Staff.Num(); ++i)
+		{
+			Staff[i]->SetActorLocationAndRotation(FVector(Door.X, Door.Y, 0.f) + Inside[i], FRotator(0.f, MomYawOffset, 0.f));
+			if (StaffAnims.IsValidIndex(i) && StaffAnims[i])
+			{
+				StaffAnims[i]->SetClip(PersonIdle);
+			}
+		}
+		// Everything the walk here had done to them, in case the story was started at this scene.
+		Player->SetSaturation(0.12f);
+		for (UHGPersonAnim* Anim : DoctorAnims) { if (Anim) { Anim->SetWrong(1.f); } }
+		for (UHGPersonAnim* Anim : StaffAnims) { if (Anim) { Anim->SetWrong(1.f); } }
+		for (UHGFaceAnim* Face : DoctorFaces) { if (Face) { Face->SetWrong(1.f); } }
+		for (UHGFaceAnim* Face : StaffFaces) { if (Face) { Face->SetWrong(1.f); } }
+		Man->SetActorScale3D(FVector(1.f, 1.f, 1.13f));
+		for (int32 i = 0; i < Staff.Num(); ++i)
+		{
+			Staff[i]->SetActorHiddenInGame(false);
+			Staff[i]->SetActorScale3D(FVector(1.f, 1.f, 1.13f));
+			if (StaffLights.IsValidIndex(i) && StaffLights[i]) { StaffLights[i]->SetIntensity(90.f); }
+		}
+		if (!FollowLight)
+		{
+			FollowLight = AddFaceLight(Man);
+		}
+		FollowLight->SetIntensity(110.f);
+		if (!HeartBed)
+		{
+			HeartBed = HG::ExtraBed(this, TEXT("heart"), 0.45f);
+		}
+		Level->SetOpDoorOpen(1.f);
+		CardText = TEXT("THE CHAIR");
+		CardStart = GetWorld()->GetTimeSeconds();
+		Player->SetLens(84.f);
+		Player->CarryEyesTo(PersonPoint(Woman, 38.f, 0.f, 136.f));
+		Player->LookAt(FVector(Door.X, Door.Y, 105.f));
+		if (HeartBed)
+		{
+			HeartBed->SetVolumeMultiplier(0.45f);
+			HeartBed->SetPitchMultiplier(1.15f);
+		}
+	}
+	Player->CarryEyesTo(PersonPoint(Woman, 38.f, 0.f, 136.f));
+	const FVector Eyes = Player->EyeLocation();
+	const FVector ManFace = PersonPoint(Man, 9.f, 0.f, 185.f);
+	for (int32 i = 0; i < Staff.Num(); ++i)
+	{
+		PersonLooks(Staff[i], StaffAnims.IsValidIndex(i) ? StaffAnims[i].Get() : nullptr, Eyes, 0.6f);
+	}
+
+	// The white clears and he sees where he is.
+	WhiteOut = 1.f - FMath::SmoothStep(1.4f, 4.4f, T);
+
+	if (T > 4.6f && Once(0))
+	{
+		Say(TEXT("\"There now. You sit with me. That's it.\""), 4.5f);
+		HG::Voice(this, TEXT("chair_sit"), PersonPoint(Woman, 9.f, 0.f, 150.f));
+		HG::Extra(this, TEXT("chair_creak"), Chair + FVector(0, 0, 50), 0.8f);
+	}
+	if (T > 6.2f && Once(1))
+	{
+		HG::Extra(this, TEXT("tray"), Chair + FVector(-105, 118, 75), 0.9f);
+	}
+	if (T > 7.8f && Once(2))
+	{
+		HG::Extra(this, TEXT("glove"), ManFace - FVector(0, 0, 60), 0.9f);
+	}
+	if (T > 8.8f)
+	{
+		// He turns from the table and comes to stand over him.
+		if (WalkPerson(Man, ManAnim, FVector(Chair.X - 78.f, Chair.Y + 12.f, 0.f), 55.f, 0.5f, Dt))
+		{
+			FacePerson(Man, Eyes, Dt, 3.f);
+		}
+		PersonLooks(Man, ManAnim, Eyes, 0.9f);
+	}
+	else if (ManAnim)
+	{
+		ManAnim->LookTowards(0.f, -14.f);
+	}
+	if (T > 10.2f && Once(3))
+	{
+		Say(TEXT("\"We'll just cover your eyes. There.\""), 4.f);
+		HG::Voice(this, TEXT("chair_cover"), ManFace);
+		HG::Extra(this, TEXT("cloth"), Eyes, 1.f);
+	}
+
+	// The cloth comes down from above, and from here on it is all he has.
+	const float ClothOn = 12.2f;
+	ClothDown = FMath::SmoothStep(11.f, ClothOn, T);
+	if (T < 11.f)
+	{
+		ChairLook = Player->GetControlRotation();
+	}
+	const float C = T - ClothOn;
+	if (C > 0.f)
+	{
+		// Turning his head moves the light and the shadows about on the cloth; the stain stays where it is.
+		const FRotator Turned = (Player->GetControlRotation() - ChairLook).GetNormalized();
+		ClothShift = FVector2D(FMath::Clamp(Turned.Yaw / 50.f, -1.f, 1.f), FMath::Clamp(Turned.Pitch / 40.f, -1.f, 1.f));
+		ClothBusy = FMath::SmoothStep(0.5f, 3.f, C) * (1.f - FMath::SmoothStep(15.f, 22.f, C));
+		ClothLoom = FMath::SmoothStep(1.5f, 6.2f, C) * (1.f - 0.7f * FMath::SmoothStep(17.f, 24.f, C));
+
+		if (C > 2.f && Once(4))
+		{
+			Say(TEXT("\"Hold still, sweetheart.\""), 3.5f);
+			Dull(HG::VoiceBed(this, TEXT("chair_still"), 0.9f));
+		}
+		if (C > 3.8f && Once(5))
+		{
+			Dull(HG::ExtraBed(this, TEXT("instrument"), 0.5f));
+			Dull(HG::ExtraBed(this, TEXT("chair_creak"), 0.45f));
+		}
+		if (C > 5.2f && Once(6))
+		{
+			Say(TEXT("\"Hold him.\""), 3.f);
+			Dull(HG::VoiceBed(this, TEXT("chair_hold"), 0.9f));
+		}
+		// The moment itself is the quietest: his heart drops away, a thin ringing comes up, and the red starts.
+		if (C > 6.5f && Once(7))
+		{
+			RingBed = HG::ExtraBed(this, TEXT("ring"), 0.02f);
+			Dull(HG::ExtraBed(this, TEXT("instrument"), 0.35f));
+		}
+		ClothRed = FMath::Clamp((C - 7.f) / 15.5f, 0.f, 1.15f);
+		if (HeartBed)
+		{
+			const float Before = FMath::Lerp(0.45f, 0.95f, FMath::SmoothStep(0.f, 6.f, C));
+			const float After = FMath::Lerp(0.1f, 0.55f, FMath::SmoothStep(16.f, 23.f, C));
+			HeartBed->SetVolumeMultiplier(FMath::Lerp(Before, After, FMath::SmoothStep(6.3f, 7.3f, C)));
+			HeartBed->SetPitchMultiplier(FMath::Lerp(1.15f, 1.3f, FMath::SmoothStep(0.f, 6.f, C)) - 0.35f * FMath::SmoothStep(6.3f, 9.f, C));
+		}
+		if (RingBed)
+		{
+			RingBed->SetVolumeMultiplier(0.02f + 0.33f * FMath::SmoothStep(6.5f, 9.5f, C) * (1.f - FMath::SmoothStep(17.f, 22.f, C)));
+		}
+		if (C > 12.5f && Once(8))
+		{
+			Say(TEXT("\"Shh. Shh. Nearly done.\""), 4.f);
+			Dull(HG::VoiceBed(this, TEXT("chair_shh"), 0.8f));
+		}
+		if (C > 21.5f && Once(9))
+		{
+			Say(TEXT("\"There. All finished. Good boy.\""), 4.5f);
+			Dull(HG::VoiceBed(this, TEXT("chair_done"), 0.9f));
+		}
+		BlackOut = FMath::SmoothStep(24.5f, 27.5f, C);
+	}
+
+	if (bShots)
+	{
+		// Pictures: the room from her lap, her arms round him, the doctor over him, then the cloth four times.
+		if (T < 5.8f) { Player->TurnTowards(FVector(Door.X, Door.Y + 40.f, 110.f), Dt, 3.f); }
+		else if (T < 8.f) { Player->TurnTowards(PersonPoint(Woman, 70.f, 0.f, 62.f), Dt, 3.f); }
+		else { Player->TurnTowards(ManFace, Dt, 3.f); }
+		if (T > 5.6f) { Shot(15, TEXT("ward-22-lap.png")); }
+		if (T > 7.8f) { Shot(16, TEXT("ward-23-held.png")); }
+		if (T > 10.8f) { Shot(17, TEXT("ward-24-over-him.png")); }
+		if (C > 3.2f) { Shot(18, TEXT("ward-25-cloth.png")); }
+		if (C > 6.3f) { Shot(19, TEXT("ward-26-shadow.png")); }
+		if (C > 12.f) { Shot(20, TEXT("ward-27-red.png")); }
+		if (C > 22.5f) { Shot(21, TEXT("ward-28-soaked.png")); }
+	}
+
+	if (C > 28.5f && !bOver)
 	{
 		bOver = true;
 		bWon = true;
-		bCorridorDone = true;
-		EndTitle = TEXT("THE OPERATION ROOM");
+		bChairDone = true;
+		EndTitle = TEXT("THE CHAIR");
 		EndLines.Reset();
-		EndLines.Add(TEXT("End of the third scene."));
+		EndLines.Add(TEXT("End of the fourth scene."));
 		EndLines.Add(TEXT("The next one is being built."));
-		UE_LOG(LogHG, Log, TEXT("HGTEST CORRIDOR done seconds=%d lamps=%d/%d staff=%d"), FMath::RoundToInt32(RoundSeconds), LampsOut, LampAlong.Num(), StaffWalking);
+		UE_LOG(LogHG, Log, TEXT("HGTEST CHAIR done seconds=%d red=%.2f cues=%d"), FMath::RoundToInt32(RoundSeconds), ClothRed, ChairCues);
 	}
 }
 
@@ -1219,6 +1458,15 @@ void AHGGameMode::TickWard(float Dt, AHGPlayer* Player)
 	const float ClockRate = bBot ? 16.f : 2.f;
 	const float SecondsToTen = 240.f - RoundSeconds * ClockRate;
 	Level->SetClock(10.f - FMath::Max(SecondsToTen, 0.f) / 3600.f);
+	if (StartScene >= 4 && !bChair && WardStep < 10 && RoundSeconds > 1.f && WardMom && WardDoctors.Num() == 2)
+	{
+		// Straight to the chair: behind the white, as if he had just been carried in.
+		Player->SetCarried(true);
+		WardStep = 10;
+		HandStep = 6;
+		bChair = true;
+		WhiteOut = 1.f;
+	}
 	TickMom(Dt, Player, SecondsToTen);
 	TickDoctors(Dt, Player);
 	TickBank += Dt;
@@ -1365,7 +1613,7 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 	else if (After == 1 && WardRabbit) { Player->Interact(); }
 	else if (After == 2) { Player->SetActorLocation(MomSpot + FVector(60, -60, 60)); Player->LookAt(MomSpot); }
 	else if (After == 3 && WardRabbit) { Player->Interact(); }
-	else if (After > 3 && (bOver || After > 360))
+	else if (After > 3 && (bOver || After > 480))
 	{
 		// With the people in the game the scene has to run on through the handover.
 		const bool bStaged = WardMom && WardDoctors.Num() == 2;
@@ -1373,7 +1621,10 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 		// The corridor passes when he reached the white room, every lamp behind him is out and both people fell in.
 		const bool bCorridorGood = bCorridorDone && LampsOut >= Level->HallLampAlong().Num() - 2 && StaffWalking == 3;
 		UE_LOG(LogHG, Log, TEXT("HGTEST CORRIDOR %s staged=%d lamps=%d staff=%d door=%.2f"), (!bStaged || bCorridorGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, LampsOut, StaffWalking, OpDoorOpen);
-		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && Player->IsCarried() && VoicesFound == 11 && CorridorSoundsFound == 7));
+		// The chair passes when the cloth came down, the red reached all of it, and every cue in the scene went off.
+		const bool bChairGood = bChairDone && ClothDown >= 1.f && ClothRed >= 1.f && ChairCues == 1023;
+		UE_LOG(LogHG, Log, TEXT("HGTEST CHAIR %s staged=%d cloth=%.2f red=%.2f cues=%d"), (!bStaged || bChairGood) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, ClothDown, ClothRed, ChairCues);
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && bCorridorGood && bChairGood && Player->IsCarried() && VoicesFound == 17 && CorridorSoundsFound == 13));
 		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}
@@ -1986,6 +2237,151 @@ void AHGHUD::Centered(const FString& Text, float Y, float Scale, const FLinearCo
 	Write(Text, Color, (Canvas->ClipX - Measure(Text, Scale, Face)) * 0.5f, Y, Scale, Face);
 }
 
+namespace
+{
+	/** A fixed random number from 0 to 1 for a point on a grid. */
+	float ClothHash(int32 X, int32 Y)
+	{
+		uint32 H = static_cast<uint32>(X) * 374761393u + static_cast<uint32>(Y) * 668265263u;
+		H = (H ^ (H >> 13)) * 1274126177u;
+		return static_cast<float>((H ^ (H >> 16)) & 0xFFFF) / 65535.f;
+	}
+
+	/** Smooth blotchy noise from 0 to 1. */
+	float ClothNoise(float X, float Y)
+	{
+		const int32 IX = FMath::FloorToInt32(X), IY = FMath::FloorToInt32(Y);
+		const float FX = FMath::SmoothStep(0.f, 1.f, X - IX), FY = FMath::SmoothStep(0.f, 1.f, Y - IY);
+		return FMath::Lerp(FMath::Lerp(ClothHash(IX, IY), ClothHash(IX + 1, IY), FX), FMath::Lerp(ClothHash(IX, IY + 1), ClothHash(IX + 1, IY + 1), FX), FY);
+	}
+
+	void UploadPixels(UTexture2D* Texture, const TArray<FColor>& Pixels)
+	{
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
+		FMemory::Memcpy(Data, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+	}
+}
+
+void AHGHUD::DrawCloth(const AHGGameMode* Game, float W, float H, float Now)
+{
+	static const int32 CW = 192, CH = 108;
+	if (!FApp::CanEverRender())
+	{
+		return;
+	}
+	if (!Cloth)
+	{
+		Cloth = UTexture2D::CreateTransient(CW, CH, PF_B8G8R8A8);
+		Cloth->SRGB = true;
+		Cloth->Filter = TF_Bilinear;
+		Cloth->AddressX = TA_Clamp;
+		Cloth->AddressY = TA_Clamp;
+		ClothPixels.SetNumUninitialized(CW * CH);
+		// Where the red starts and how late it gets everywhere else. It comes up from under the lower
+		// edge, in the middle, where the cloth lies against his face, and it does not spread evenly.
+		ClothWet.SetNumUninitialized(CW * CH);
+		for (int32 Y = 0; Y < CH; ++Y)
+		{
+			for (int32 X = 0; X < CW; ++X)
+			{
+				const float U = (X + 0.5f) / CW, V = (Y + 0.5f) / CH;
+				const float A = FVector2D((U - 0.46f) * 1.05f, (V - 0.98f) * 0.82f).Size();
+				const float B = FVector2D((U - 0.57f) * 1.15f, (V - 0.9f) * 0.9f).Size() + 0.04f;
+				// Big uneven patches, smaller ones on those, and threads that draw it upwards faster than their neighbours.
+				const float Blotch = 0.26f * (ClothNoise(U * 5.f, V * 5.f * 0.5625f) - 0.5f) + 0.1f * (ClothNoise(U * 15.f + 7.f, V * 15.f * 0.5625f) - 0.5f)
+					+ 0.13f * (ClothNoise(U * 34.f + 3.f, V * 5.f) - 0.5f) + 0.05f * (ClothNoise(U * 70.f, V * 40.f) - 0.5f);
+				ClothWet[Y * CW + X] = FMath::Max(0.f, FMath::Min(A, B) / 0.82f + Blotch);
+			}
+		}
+		// The weave: darker lines between the threads, a little light on the top of each.
+		Weave = UTexture2D::CreateTransient(8, 8, PF_B8G8R8A8);
+		Weave->SRGB = true;
+		Weave->Filter = TF_Bilinear;
+		TArray<FColor> Threads;
+		Threads.SetNumUninitialized(64);
+		for (int32 Y = 0; Y < 8; ++Y)
+		{
+			for (int32 X = 0; X < 8; ++X)
+			{
+				const bool bGap = (X % 4) == 0 || (Y % 4) == 0;
+				const bool bOver = ((X / 4) + (Y / 4)) % 2 == 0;
+				Threads[Y * 8 + X] = bGap ? FColor(0, 0, 0, 20) : (bOver ? FColor(255, 255, 255, 9) : FColor(0, 0, 0, 5));
+			}
+		}
+		UploadPixels(Weave, Threads);
+		ClothNext = 0.f;
+	}
+
+	if (Now >= ClothNext)
+	{
+		ClothNext = Now + 0.05f;
+		const float Aspect = 9.f / 16.f;
+		const FVector2D Shift = Game->ClothShift;
+		// The lamp, high and a little to one side, and the shapes between it and him.
+		const FVector2D Lamp(0.52f - 0.12f * Shift.X, 0.26f + 0.12f * Shift.Y);
+		const float Loom = Game->ClothLoom, Busy = Game->ClothBusy;
+		const FVector2D Bent(0.5f + 0.05f * FMath::Sin(Now * 0.5f) - 0.16f * Shift.X, 0.62f - 0.3f * Loom + 0.14f * Shift.Y);
+		const float BentSize = 0.13f + 0.2f * Loom;
+		const FVector2D Hand(0.36f + 0.12f * FMath::Sin(Now * 1.7f) - 0.16f * Shift.X, 0.74f + 0.06f * FMath::Cos(Now * 1.3f) + 0.14f * Shift.Y);
+		const FVector2D Other(0.7f + 0.07f * FMath::Sin(Now * 0.9f + 2.f) - 0.16f * Shift.X, 0.68f + 0.05f * FMath::Sin(Now * 1.1f) + 0.14f * Shift.Y);
+		const float Soak = Game->ClothRed * 1.08f;
+		// It comes down from the top with a soft lower edge.
+		const float Edge = Game->ClothDown * 1.3f - 0.15f;
+		const FLinearColor Fresh = Game->bLessBlood ? FLinearColor(0.3f, 0.3f, 0.32f) : FLinearColor(0.66f, 0.035f, 0.03f);
+		const FLinearColor Deep = Game->bLessBlood ? FLinearColor(0.16f, 0.16f, 0.18f) : FLinearColor(0.3f, 0.f, 0.01f);
+		for (int32 Y = 0; Y < CH; ++Y)
+		{
+			for (int32 X = 0; X < CW; ++X)
+			{
+				const float U = (X + 0.5f) / CW, V = (Y + 0.5f) / CH;
+				auto Near = [U, V, Aspect](const FVector2D& Centre, float Size)
+				{
+					const float DX = U - Centre.X, DY = (V - Centre.Y) * Aspect;
+					return FMath::Exp(-(DX * DX + DY * DY) / (Size * Size));
+				};
+				float Light = 0.74f + 0.25f * Near(Lamp, 0.34f);
+				Light *= 1.f - (0.14f + 0.36f * Loom) * Near(Bent, BentSize);
+				Light *= 1.f - 0.2f * Busy * Near(Hand, 0.085f);
+				Light *= 1.f - 0.15f * Busy * Near(Other, 0.11f);
+				FLinearColor Colour(Light, Light * 0.985f, Light * 0.945f);
+
+				const float Wet = ClothWet[Y * CW + X];
+				// Nothing at all until it starts.
+				const float Stained = (1.f - FMath::SmoothStep(Soak - 0.035f, Soak + 0.01f, Wet)) * FMath::SmoothStep(0.f, 0.04f, Soak);
+				if (Stained > 0.f)
+				{
+					// Fresh at the spreading edge, darker where it has been longest, and the light still shows through it.
+					const float Age = FMath::Clamp((Soak - Wet) / 0.55f, 0.f, 1.f);
+					const FLinearColor Blood = FMath::Lerp(Fresh, Deep, Age) * (0.5f + 0.6f * Light);
+					Colour = FMath::Lerp(Colour, Blood, Stained * 0.95f);
+					const float Rim = FMath::Exp(-FMath::Square((Wet - Soak + 0.03f) / 0.025f));
+					Colour *= 1.f - 0.3f * Rim;
+				}
+				const float Alpha = 1.f - FMath::SmoothStep(Edge - 0.15f, Edge, V);
+				ClothPixels[Y * CW + X] = FColor(
+					static_cast<uint8>(FMath::Clamp(Colour.R, 0.f, 1.f) * 255.f), static_cast<uint8>(FMath::Clamp(Colour.G, 0.f, 1.f) * 255.f),
+					static_cast<uint8>(FMath::Clamp(Colour.B, 0.f, 1.f) * 255.f), static_cast<uint8>(Alpha * 255.f));
+			}
+		}
+		UploadPixels(Cloth, ClothPixels);
+	}
+
+	FCanvasTileItem Sheet(FVector2D(0.f, 0.f), Cloth->GetResource(), FVector2D(W, H), FLinearColor::White);
+	Sheet.BlendMode = SE_BLEND_Translucent;
+	Canvas->DrawItem(Sheet);
+	// Each thread is about three pixels wide, whatever the screen.
+	const float Covered = FMath::Clamp(Game->ClothDown * 1.3f - 0.3f, 0.f, 1.f);
+	if (Covered > 0.f)
+	{
+		FCanvasTileItem Threads(FVector2D(0.f, 0.f), Weave->GetResource(), FVector2D(W, H * Covered), FVector2D(0.f, 0.f), FVector2D(W / 6.f, H * Covered / 6.f), FLinearColor::White);
+		Threads.BlendMode = SE_BLEND_Translucent;
+		Canvas->DrawItem(Threads);
+	}
+}
+
 void AHGHUD::DrawHUD()
 {
 	Super::DrawHUD();
@@ -2021,6 +2417,15 @@ void AHGHUD::DrawHUD()
 	{
 		// The operation room's light, taking the whole picture.
 		DrawRect(FLinearColor(1.f, 1.f, 1.f, Game->WhiteOut), 0.f, 0.f, W, H);
+	}
+
+	if (Game->ClothDown > 0.f)
+	{
+		DrawCloth(Game, W, H, Now);
+	}
+	if (Game->BlackOut > 0.f)
+	{
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, Game->BlackOut), 0.f, 0.f, W, H);
 	}
 
 	const bool bStory = Game->GetVariant() == EHGVariant::Ward;
@@ -2067,7 +2472,9 @@ void AHGHUD::DrawHUD()
 		{
 			// A chapter card over the picture: it comes up and goes again without stopping anything.
 			const float Alpha = FMath::Clamp(FMath::Min(CardAge - 0.5f, 4.6f - CardAge), 0.f, 1.f);
-			Centered(Game->CardText, H * 0.40f, 3.4f * S, FLinearColor(1.f, 1.f, 1.f, Alpha), FaceLight);
+			// White letters, or dark ones while the picture itself is white.
+			const float Ink = 1.f - 0.9f * Game->WhiteOut;
+			Centered(Game->CardText, H * 0.40f, 3.4f * S, FLinearColor(Ink, Ink, Ink, Alpha), FaceLight);
 		}
 		if (Game->RoundSeconds < 12.f)
 		{

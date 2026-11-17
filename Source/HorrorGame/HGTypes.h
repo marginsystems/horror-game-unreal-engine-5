@@ -74,6 +74,8 @@ namespace HG
 	void Play(const UObject* Context, const TCHAR* Name, float Volume = 1.f, float Pitch = 1.f);
 	/** A spoken line from the private assets plugin (/HorrorPrivate/Audio/V_<name>), heard from where the speaker is. Silent without the plugin. */
 	void Voice(const UObject* Context, const TCHAR* Name, const FVector& Location, float Volume = 1.f);
+	/** The same line with no place in the world, handed back so it can be muffled or faded. Null without the plugin. */
+	UAudioComponent* VoiceBed(const UObject* Context, const TCHAR* Name, float Volume = 1.f);
 	/**
 	 * A licensed sound effect from the private assets plugin (/HorrorPrivate/Audio/X_<name>), heard from
 	 * Location. False when the plugin does not have it, so the caller can fall back to a synthesised one.

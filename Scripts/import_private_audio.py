@@ -12,7 +12,7 @@ import unreal
 SOURCE = os.environ.get("HG_SOURCE", "")
 if not SOURCE:
     raise RuntimeError("HGASSET FAILED HG_SOURCE is not set")
-LOOPS = ("X_ward_room", "X_ward_birds", "X_clock", "X_hall", "X_hall_low", "X_heart", "X_hall_voices")
+LOOPS = ("X_ward_room", "X_ward_birds", "X_clock", "X_hall", "X_hall_low", "X_heart", "X_hall_voices", "X_ring")
 files = sorted(glob.glob(os.path.join(SOURCE, "V_*.wav")) + glob.glob(os.path.join(SOURCE, "X_*.wav")))
 if not files:
     raise RuntimeError(f"HGASSET FAILED no V_*.wav or X_*.wav files in {SOURCE}")
