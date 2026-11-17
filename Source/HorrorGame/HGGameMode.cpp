@@ -391,6 +391,24 @@ void AHGGameMode::PopulateWard()
 		}
 	}
 	UE_LOG(LogHG, Log, TEXT("HGTEST DOCTORS spawned=%d"), WardDoctors.Num());
+
+	// The lines spoken in scenes one and two. They live with the people, in the private plugin.
+	static const TCHAR* Lines[] = { TEXT("mom_shapes"), TEXT("mom_good"), TEXT("mom_rabbit"), TEXT("mom_thanks"), TEXT("mom_doctors"),
+		TEXT("doc_ready"), TEXT("mom_lift"), TEXT("doc_take"), TEXT("doc_hush") };
+	for (const TCHAR* Line : Lines)
+	{
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Audio/V_%s.V_%s"), Line, Line);
+		if (USoundBase* Found = LoadObject<USoundBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			KeptSounds.Add(Found);
+			++VoicesFound;
+		}
+		else if (WardMom)
+		{
+			UE_LOG(LogHG, Warning, TEXT("HGTEST MISSING voice %s"), Line);
+		}
+	}
+	UE_LOG(LogHG, Log, TEXT("HGTEST VOICES found=%d/%d"), VoicesFound, static_cast<int32>(UE_ARRAY_COUNT(Lines)));
 }
 
 AActor* AHGGameMode::SpawnPerson(const TCHAR* ClassPath, const FVector& At, float FacingYaw, UHGPersonAnim*& OutAnim, UHGFaceAnim*& OutFace)
@@ -1053,7 +1071,7 @@ void AHGGameMode::TickWardBot(float Dt, AHGPlayer* Player)
 		// With the people in the game the scene has to run on through the handover.
 		const bool bStaged = WardMom && WardDoctors.Num() == 2;
 		UE_LOG(LogHG, Log, TEXT("HGTEST HANDOVER %s staged=%d step=%d carried=%d"), (!bStaged || bHandedOver) ? TEXT("PASS") : TEXT("FAIL"), bStaged ? 1 : 0, HandStep, Player->IsCarried() ? 1 : 0);
-		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && Player->IsCarried()));
+		const bool bGood = bOver && bWon && WardSorter->Filled == 3 && bAssetsComplete && (!bStaged || (bHandedOver && Player->IsCarried() && VoicesFound == 9));
 		UE_LOG(LogHG, Log, TEXT("HGTEST RESULT %s ward ended=%d sorter=%d held=%d"), bGood ? TEXT("PASS") : TEXT("FAIL"), bOver ? 1 : 0, WardSorter->Filled, Player->HeldToy() ? 1 : 0);
 		Finish(bGood ? 0 : 1);
 	}

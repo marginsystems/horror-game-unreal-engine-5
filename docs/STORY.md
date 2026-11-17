@@ -61,7 +61,7 @@ can only look.
 | # | Scene | What the player does | Mood |
 | --- | --- | --- | --- |
 | 1 | The ward | Sits on the floor with toys at a small child's eye height. Mom is in the room. Learns to look, move and pick things up through play: a shape sorter (circle, triangle, square) and one more small task. | Bright, warm, high contrast, colourful like a child's room. |
-| 2 | The handover | Doctors come in. Mom gives a small sad smile and hands him over. He cries for her. Looking only. | The colour starts to drain. |
+| 2 | The handover | Doctors come to the door. Mom lifts him, gives a small sad smile and hands him over. He is carried out looking back at her over the doctor's shoulder. He cries for her. Looking only. | The colour drains with every step away from her. |
 | 3 | The corridor | Carried out of the room and to the right down a long hallway. The operation room is a door on the left. Looking only. | Long, echoing, too big. |
 | 4 | The chair | Held on a doctor's lap. Cloth goes over the eyes: the screen is fabric with light behind it, voices are muffled, red soaks slowly into the white. Nothing is shown directly. | The worst moment, and the quietest. |
 | 5 | The escape | He gets away. Small and fast. Runs and crawls through the hospital looking for mom while the doctors look for him. | The same building, now wrong: longer, darker, lights failing. |
@@ -74,9 +74,12 @@ After the ending, the text of "It was not unusual" is shown to the player, with 
 - **Mom.** Blonde, straight hair past her shoulders with a fringe, blue eyes. A soft sweater,
   jeans, house shoes. Calm. She is the only warm thing
   in the building and the thing the whole escape points at.
-- **The doctors.** Seen the way a child sees them. In scenes 2 to 4 they are ordinary people
-  in white coats, masks and head mirrors. In the escape they are too tall, their faces are
-  gone behind the mask and the mirror, and they call his name softly. They never run.
+- **The doctors.** Seen the way a child sees them. At the door they are ordinary, polite
+  people in white. From the moment he is taken out of his mother's arms they begin to change,
+  too slowly to catch: the one walking behind grows taller, their necks and faces lengthen,
+  their eyes open too wide and stop blinking, and a smile spreads and stays. By the escape
+  they are too tall, their faces are gone behind the mask and the mirror, and they call his
+  name softly. They never run.
 - **The child.** You. Never seen, except his hands.
 
 ## The place
@@ -124,8 +127,8 @@ to the second.
 
 ## Build order
 
-1. The ward room and the shape sorter, at child height.
-2. The corridor and the carried walk.
+1. The ward room and the shape sorter, at child height. (Built.)
+2. The handover and the start of the carried walk. (Built.) Then the rest of the corridor.
 3. The chair, done with cloth, sound and colour only.
 4. The escape in the hospital map: crawling, hiding, doctors that search.
 5. Mom, the ending, and the closing text.

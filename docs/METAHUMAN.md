@@ -11,10 +11,20 @@ Written 2026-11-17 while making "Mom". State now:
     the hall and stop in the doorway, looking in at him.
   Clothes and hair are free MetaHuman packages from Fab (see "Clothes and hair from Fab" below).
   The bodies are moved by `UHGPersonAnim` (`Source/HorrorGame/HGPersonAnim.h`): one looping
-  clip, played in place, with the neck and head turned on top of it.
+  clip, played in place, with the neck and head turned on top of it. It can also fold the arms
+  up to carry a child (`SetHold`) and draw out the neck and head (`SetWrong`).
+  The faces are moved by `UHGFaceAnim` (`Source/HorrorGame/HGFaceAnim.h`). A MetaHuman head is
+  its own mesh with its own animation step; the stock one (`ABP_Face`) only follows the body
+  and leaves every expression control at zero, so everyone looked blank. Ours follows the body
+  the same way (the engine's copy-pose node, run by hand) and then sets RigLogic's raw
+  controls by name (`CTRL_expressions_mouthCornerPullL` and so on), which the head mesh's
+  post-process step `ABP_Face_PostProcess` turns into skin. That gives mom a soft smile, a sad
+  one, and blinking, and gives the doctors the look they take on in scene two.
 - **Not done:** the doctors' masks, caps and head mirrors, and a real white coat (Fab has no
-  free one for MetaHumans; the paid ones are $10 to $21). Mom's expression is still neutral,
-  which reads stern. Walking is one clip slid along the floor, so feet slip a little.
+  free one for MetaHumans; the paid ones are $10 to $21). Walking is one clip slid along the
+  floor, so feet slip a little. The carrying arms are two bones turned by hand, not a real
+  carrying animation. Beards and eyebrows glitter under the hall lamps (strand hair
+  highlights at this resolution).
 
 Helper used below: `Scripts/mcp.py call call_tool '{"toolset_name":..., "tool_name":..., "arguments":{...}}' 20000`.
 Toolset names: `E` = `metahuman_toolset.metahuman.MetaHumanToolset` (Epic's),
