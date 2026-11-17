@@ -787,6 +787,7 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 		if (!FollowLight)
 		{
 			FollowLight = NewObject<UPointLightComponent>(Man);
+			FollowLight->SetMobility(EComponentMobility::Movable);
 			FollowLight->SetupAttachment(Man->GetRootComponent());
 			FollowLight->SetRelativeLocation(FVector(0, 62, 156));
 			FollowLight->SetIntensityUnits(ELightUnits::Unitless);
@@ -796,7 +797,8 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			FollowLight->RegisterComponent();
 			Man->AddInstanceComponent(FollowLight);
 		}
-		FollowLight->SetIntensity(16.f * Wrong);
+		// The hall lamps are in the thousands but metres away; this one is a hand's width from his face.
+		FollowLight->SetIntensity(110.f * Wrong);
 
 		if (HandTimer > 6.2f && !bHushed)
 		{
