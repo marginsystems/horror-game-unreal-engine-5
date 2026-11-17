@@ -1,12 +1,18 @@
 # Horror Game (Unreal Engine 5)
 
-An open source comedy-horror game built with Unreal Engine 5.8. The monster is real. Your
-weapons are not: the pistol fires a "BANG!" flag, the shotgun fires confetti, and the grenade
-is a dud until long after you needed it.
+An open source horror game built with Unreal Engine 5.8, based on a true story.
 
-![Gary, frozen, behind the pistol's BANG! flag](docs/images/clinic-pistol.jpg)
+Russia, around 1997. You are five years old, in a children's hospital, playing on the floor
+of a bright ward room with your mother beside you. Then the doctors come in.
 
-## What is playable
+It is the author's own memory, and it was not unusual: children of that time and place had
+operations awake, held on an adult's lap. [The story](docs/STORY.md) tells what happened, what
+the game does with it, and what medical sources say about why it was done that way.
+
+The game is being rebuilt around that story now. What is playable today is the prototype
+below: an earlier, sillier game about broken weapons that the story replaces.
+
+## The prototype
 
 Three previews of the same round: find 5 fuses, power the exit shutter, leave. One monster
 hunts you. Nothing you carry can hurt it, but everything you carry changes what it does.
