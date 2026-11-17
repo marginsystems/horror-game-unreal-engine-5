@@ -66,6 +66,14 @@ PEOPLE = {
         "outfits": [SHIRT, JEANS, FLATS],
         "colors": {},
     },
+    # The owner remembers both doctors as women, so this is the second one. She replaced
+    # "DoctorMan" (the Walter preset) on 2026-11-18; nothing in the game uses him any more.
+    "doctor_second": {
+        "name": "DoctorSecond",
+        "preset": "Vivian",
+        "outfits": [SHIRT, JEANS, FLATS],
+        "colors": {},
+    },
     "doctor_man": {
         "name": "DoctorMan",
         "preset": "Walter",
@@ -73,7 +81,7 @@ PEOPLE = {
         "colors": {},
     },
 }
-for person in ("doctor_woman", "doctor_man"):
+for person in ("doctor_woman", "doctor_second", "doctor_man"):
     PEOPLE[person]["colors"] = {
         "WI_OA_Jeans": {"PrimaryColorJeans": WHITE, "SecondaryColorJeans": WHITE},
         "WI_OA_Flats": {"PrimaryColorFlats": DARK_SHOE, "SecondaryColorFlats": DARK_SHOE, "TertiaryColorFlats": DARK_SHOE},
