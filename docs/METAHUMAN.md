@@ -219,6 +219,9 @@ What had to be found out:
 - **Assembling twice mixes up materials.** A second assembly over the first one's output in
   `Mom/Clothing` paired the sweater with the shoes' material. The script deletes that folder's
   assets (all generated) before each assembly.
+- **A changed groom does not reach the game.** Assembly keeps the copy of a groom already in
+  `<Name>/Grooms`, so new strand settings on the source groom did nothing until the script
+  deleted that copy (and its binding) before assembling.
 - **Adding an item twice.** `try_add_item_from_wardrobe_item` adds a second copy named
   `..._None_1` when the item is already in the character's palette; look it up first with
   `get_item_keys_for_wardrobe_item`.

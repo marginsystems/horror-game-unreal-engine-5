@@ -89,7 +89,9 @@ HAIR_TEMPLATE = "/MetaHumanCharacter/Optional/Grooms/Bindings/Hair/WI_Hair_L_Str
 # The Fab groom has one level of detail. Assembly at High quality starts the face at LOD 1 and
 # drops any groom that is not visible there (MetaHumanGroomEditorPipeline.cpp, "we may skip this
 # binding"), which left her bald. These add thinner, thicker-stranded levels, strands only,
-# because the groom has no hair cards.
+# because the groom has no hair cards. The first level is what the ward shows. Keeping 0.9 of
+# the strands there instead of 0.7 looked barely fuller; what it costs was not measured (the
+# ward's frame rate read anywhere from 27 to 54 on identical content on a busy machine).
 HAIR_LODS = (
     "(AutoLODBias=0.0,LODs=((),"
     "(CurveDecimation=0.7,VertexDecimation=0.5,AngularThreshold=2.0,ScreenSize=0.5,ThicknessScale=2.4),"
@@ -97,6 +99,8 @@ HAIR_LODS = (
     "(CurveDecimation=0.2,VertexDecimation=0.3,AngularThreshold=8.0,ScreenSize=0.125,ThicknessScale=4.5),"
     "(CurveDecimation=0.1,VertexDecimation=0.25,AngularThreshold=16.0,ScreenSize=0.0625,ThicknessScale=6.0,Simulation=Disable)))"
 )
+
+HAIR_TIP_SCALE = 0.5
 
 # The groom's own material, which ships a pink-to-brown dye. Dark blonde at the roots, lighter tips.
 HAIR_MATERIAL = f"{WARDROBE}/HairStraightBangs/Hair_StraightHairwithAirBangs/Materials/MI_Groom_Inst"
@@ -127,6 +131,13 @@ def fab_hair_item():
     for group in groups:
         group.import_text(HAIR_LODS)
     groom.set_editor_property("hair_groups_lod", groups)
+    # Strands as wide at the tip as at the root looked like string where the hair thins out.
+    rendering = list(groom.get_editor_property("hair_groups_rendering"))
+    for group in rendering:
+        geometry = group.get_editor_property("geometry_settings")
+        geometry.set_editor_property("hair_tip_scale", HAIR_TIP_SCALE)
+        group.set_editor_property("geometry_settings", geometry)
+    groom.set_editor_property("hair_groups_rendering", rendering)
     library = unreal.MaterialEditingLibrary
     for name, color in HAIR_COLORS.items():
         # The return value is false even when the value is taken, so read it back instead.
@@ -269,6 +280,13 @@ def dress(person):
             unreal.AssetRegistryHelpers.get_asset_registry().scan_paths_synchronous([clothing], True)
             for asset_path in unreal.EditorAssetLibrary.list_assets(clothing, recursive=True):
                 unreal.EditorAssetLibrary.delete_asset(asset_path)
+            # The same goes for the copy of the Fab hair in her Grooms folder: assembly keeps an
+            # existing copy, so a change to the groom's strands never reached the game.
+            if person.get("fab_hair"):
+                for asset_name in ("GB_Hair_StraightHairwithAirBangs", "StraightHairwithAirBangs"):
+                    old_copy = f"{ROOT}/{name}/Grooms/{asset_name}"
+                    if unreal.load_asset(old_copy):
+                        log("CLEARED", old_copy, unreal.EditorAssetLibrary.delete_asset(old_copy))
             parameters = unreal.MetaHumanCharacterEditorBuildParameters()
             parameters.pipeline_type = unreal.MetaHumanDefaultPipelineType.OPTIMIZED
             parameters.pipeline_quality = unreal.MetaHumanQualityLevel.HIGH
