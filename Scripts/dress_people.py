@@ -66,7 +66,7 @@ PEOPLE = {
         "outfits": [SHIRT, JEANS, FLATS],
         "colors": {},
     },
-    # The owner remembers both doctors as women, so this is the second one. She replaced
+    # Both doctors are women, and this is the second one. She replaced
     # "DoctorMan" (the Walter preset) on 2026-11-18; nothing in the game uses him any more.
     "doctor_second": {
         "name": "DoctorSecond",

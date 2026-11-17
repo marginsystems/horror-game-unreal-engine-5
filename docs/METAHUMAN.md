@@ -7,8 +7,8 @@ Written 2026-11-17 while making "Mom". State now:
   - **Mom** (from the Jelena preset): a sweater, jeans and flats, long straight hair with a
     fringe. She stands by the bed, looks down at the child and glances at the door by turning
     her head and neck; her body turns only when he has gone well round her.
-  - **DoctorWoman** and **DoctorSecond** (Grace and Vivian): hospital whites. Both are women,
-    because that is how the owner remembers it; "DoctorMan" (Walter) was the second doctor until
+  - **DoctorWoman** and **DoctorSecond** (Grace and Vivian): hospital whites. Both are women;
+    "DoctorMan" (Walter) was the second doctor until
     2026-11-18 and is no longer used by the game. At ten they walk up
     the hall and stop in the doorway, looking in at him. In scene three the same two Blueprints
     are spawned a second time, as the people standing in the corridor: every adult in the
