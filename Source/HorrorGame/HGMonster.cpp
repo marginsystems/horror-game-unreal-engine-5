@@ -12,6 +12,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/Texture.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Misc/Paths.h"
 #include "Kismet/GameplayStatics.h"
 
 namespace
@@ -157,6 +158,27 @@ void AHGMonster::BuildStandIn(const FLinearColor& Color, float Height)
 	HG::AddShape(this, Body, TEXT("Cylinder"), FVector(0, 0, Height * 0.5f), FVector(0.5f, 0.5f, Height / 100.f), Color);
 }
 
+bool AHGMonster::BuildCreature(const TCHAR* MeshPath, const TCHAR* InClipPrefix, float Scale)
+{
+	USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, MeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!Mesh)
+	{
+		return false;
+	}
+	Rig = NewObject<USkeletalMeshComponent>(this);
+	Rig->SetMobility(EComponentMobility::Movable);
+	Rig->SetupAttachment(Body);
+	Rig->SetSkeletalMeshAsset(Mesh);
+	Rig->SetRelativeScale3D(FVector(Scale));
+	Rig->SetRelativeRotation(FRotator(0.f, HumanYaw, 0.f));
+	Rig->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Rig->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	Rig->RegisterComponent();
+	AddInstanceComponent(Rig);
+	ClipPrefix = InClipPrefix;
+	return true;
+}
+
 bool AHGMonster::BuildHuman(float Scale, const FLinearColor& Tint)
 {
 	// A rigged body and an animation library that were made for each other (Quaternius), kept in the
@@ -220,6 +242,7 @@ bool AHGMonster::BuildHuman(float Scale, const FLinearColor& Tint)
 		// No body to wear: show the library's own mannequin instead.
 		Rig->SetVisibility(true);
 	}
+	ClipPrefix = TEXT("/HorrorPrivate/Characters/UAL1/UAL1_Standard/SkeletalMeshes/UAL1_Standard");
 	PlayClip(TEXT("Idle_Loop"));
 	return true;
 }
@@ -232,7 +255,7 @@ void AHGMonster::PlayClip(const TCHAR* Name, float Rate, bool bLoop)
 	}
 	if (Clip != FName(Name))
 	{
-		const FString AssetPath = FString::Printf(TEXT("/HorrorPrivate/Characters/UAL1/UAL1_Standard/SkeletalMeshes/UAL1_Standard%s.UAL1_Standard%s"), Name, Name);
+		const FString AssetPath = FString::Printf(TEXT("%s%s.%s%s"), *ClipPrefix, Name, *FPaths::GetCleanFilename(ClipPrefix), Name);
 		if (UAnimSequence* Sequence = LoadObject<UAnimSequence>(nullptr, *AssetPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
 		{
 			Rig->PlayAnimation(Sequence, bLoop);
@@ -244,6 +267,15 @@ void AHGMonster::PlayClip(const TCHAR* Name, float Rate, bool bLoop)
 
 void AHGMonster::BuildWalker()
 {
+	// First choice: The Hollow Walker from Fab, a faceless thing with claws to its knees.
+	if (BuildCreature(TEXT("/HorrorPrivate/Monsters/HollowWalker/HollowWalker/SkeletalMeshes/HollowWalker.HollowWalker"),
+		TEXT("/HorrorPrivate/Monsters/HollowWalker/HollowWalker/SkeletalMeshes/HollowWalker"), 1.5f))
+	{
+		RunClip = TEXT("Running");
+		PlayClip(TEXT("Walking"), 0.f);
+		MakeGlow(FVector(60, 0, 190), FLinearColor(0.55f, 0.7f, 1.f), 120.f);
+		return;
+	}
 	if (BuildHuman(1.38f, FLinearColor(0.62f, 0.74f, 0.82f)))
 	{
 		MakeGlow(FVector(40, 0, 250), FLinearColor(0.8f, 0.9f, 1.f), 40.f);
@@ -501,7 +533,9 @@ void AHGMonster::StrikeAPose()
 	const float Choice = FMath::FRand();
 	FVector2D ArmPitch(-50.f, 150.f);
 	float ArmSpread = 40.f;
-	if (Choice < 0.35f && WallAt >= 0.f)
+	// Only the shape-built Gary clings to walls and ceilings. A rigged body frozen in a running
+	// pose just looks like it is floating, so it stays on its feet.
+	if (!Rig && Choice < 0.35f && WallAt >= 0.f)
 	{
 		// Belly to the wall, head towards the floor, like something that came down it.
 		const FVector Spine = FVector(0, 0, -1).RotateAngleAxis(FMath::FRandRange(-70.f, 70.f), WallDirection);
@@ -510,7 +544,7 @@ void AHGMonster::StrikeAPose()
 		ArmPitch = FVector2D(140.f, 178.f);
 		ArmSpread = 50.f;
 	}
-	else if (Choice < 0.55f)
+	else if (!Rig && Choice < 0.55f)
 	{
 		// Standing on the ceiling, arms hanging down at you.
 		Body->SetWorldLocationAndRotation(FVector(Here.X, Here.Y, AHGLevel::WallHeight - 3.f), FRotationMatrix::MakeFromXZ(ToPlayer, FVector(0, 0, -1)).Rotator());
@@ -594,6 +628,12 @@ bool AHGMonster::GoTo(const FVector& Target)
 		return false;
 	}
 	const FVector Here = GetActorLocation();
+	if (Level->bWorld)
+	{
+		// A ready-made map: route over the floor the level walked when it loaded.
+		PathIndex = 0;
+		return Level->FindWorldPath(Here, Target - FVector(0, 0, 88), Path);
+	}
 	const FIntPoint From = Level->NearestOpenTile(Level->ToTile(Here));
 	const FIntPoint To = Level->NearestOpenTile(Level->ToTile(Target));
 	TArray<FIntPoint> Tiles;
@@ -632,12 +672,14 @@ bool AHGMonster::Advance(float Speed, float Dt)
 	while (PathIndex < Path.Num() && Budget > 0.f)
 	{
 		const FVector Here = GetActorLocation();
+		// Text-built places are flat at height zero; a ready-made map has stairs, so keep the route's height.
+		const bool bFlat = !Level || !Level->bWorld;
 		FVector To = Path[PathIndex] - Here;
-		To.Z = 0.f;
+		if (bFlat) { To.Z = 0.f; }
 		const float Distance = To.Size();
 		if (Distance <= Budget)
 		{
-			SetActorLocation(FVector(Path[PathIndex].X, Path[PathIndex].Y, 0.f));
+			SetActorLocation(FVector(Path[PathIndex].X, Path[PathIndex].Y, bFlat ? 0.f : Path[PathIndex].Z));
 			Budget -= Distance;
 			++PathIndex;
 			continue;
@@ -664,7 +706,7 @@ void AHGMonster::PickPatrolGoal()
 {
 	if (Level)
 	{
-		GoTo(Level->ToWorld(Level->RandomOpenTile()));
+		GoTo(Level->bWorld ? Level->RandomSpot() + FVector(0, 0, 88) : Level->ToWorld(Level->RandomOpenTile()));
 	}
 }
 
@@ -694,7 +736,7 @@ void AHGMonster::Tick(float DeltaSeconds)
 		}
 	}
 
-	if (Game->IsOver())
+	if (Game->IsOver() || Game->IsLoading())
 	{
 		return;
 	}
@@ -723,7 +765,9 @@ void AHGMonster::Tick(float DeltaSeconds)
 	const FVector Here = GetActorLocation();
 	const FVector There = Player->GetActorLocation();
 	const bool bFrozen = Kind == EHGMonster::Walker && bWasObserved;
-	if (!bFrozen && StunLeft <= 0.f && FVector::Dist2D(Here, There) < CatchDistance && Level->HasLineOfSight(Here, There))
+	// On a map with storeys, being directly above or below does not count as being caught.
+	const bool bSameStorey = !Level->bWorld || FMath::Abs((There.Z - 88.f) - Here.Z) < 150.f;
+	if (!bFrozen && StunLeft <= 0.f && bSameStorey && FVector::Dist2D(Here, There) < CatchDistance && Level->HasLineOfSight(Here + FVector(0, 0, 100), There))
 	{
 		Game->PlayerCaught(this);
 	}
@@ -741,6 +785,12 @@ void AHGMonster::TickWalker(float Dt, AHGPlayer* Player)
 		return;
 	}
 	bWasObserved = false;
+
+	// In a ready-made map he is never far away, so he gives you a head start before he comes.
+	if (Level->bWorld && Age < 14.f)
+	{
+		return;
+	}
 
 	if (State == EState::Linger)
 	{
@@ -764,7 +814,7 @@ void AHGMonster::TickWalker(float Dt, AHGPlayer* Player)
 	{
 		// Nobody is looking, so he runs.
 		Body->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
-		PlayClip(TEXT("Sprint_Loop"), 1.15f);
+		PlayClip(RunClip, 1.15f);
 		const bool bArrivedRunning = Advance(WalkerSpeed, Dt);
 		if (State == EState::Investigate && bArrivedRunning)
 		{

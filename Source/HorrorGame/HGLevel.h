@@ -22,6 +22,27 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	void Build(EHGVariant InVariant);
+	/** The children's ward room of the first scene: one bright room, a window, a door, a rug. */
+	void BuildWard();
+	/**
+	 * For a ready-made map: walks the floor outwards from Start, a step at a time, and remembers
+	 * every place a body can stand and which of them connect. Stairs and ramps count, so it covers
+	 * every storey you can reach. Then picks where the fuses, weapons, monster and exit go.
+	 */
+	void BuildFromWorld(const FVector& Start);
+	/** A place inside a ready-made map where a person can stand, for maps that ship without a player start. */
+	bool FindStandableSpot(FVector& OutSpot) const;
+	/** A route over the walked floor. OutPath leaves out the start. */
+	bool FindWorldPath(const FVector& From, const FVector& To, TArray<FVector>& OutPath) const;
+	FVector RandomSpot() const;
+
+	/** True when the place is a ready-made map and not one built from text. */
+	bool bWorld = false;
+	FVector StartSpot = FVector::ZeroVector;
+	FVector ExitSpot = FVector::ZeroVector;
+	FVector MonsterSpot = FVector::ZeroVector;
+	TArray<FVector> FuseSpots;
+	TArray<TPair<FVector, EHGItem>> ItemSpots;
 	void SetExitOpen(bool bOpen);
 
 	static constexpr float Tile = 400.f;
@@ -76,6 +97,14 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> ExitSign;
+
+	int32 NearestSpot(const FVector& At) const;
+	bool BodyFits(const FVector& A, const FVector& B) const;
+
+	/** The walked floor: a place to stand, the four places it leads to (-1 for none), and a lookup by grid column. */
+	TArray<FVector> Spots;
+	TArray<int32> Links;
+	TMap<FIntPoint, TArray<int32>> Columns;
 
 	TArray<FString> Rows;
 	TArray<bool> LampFlickers;

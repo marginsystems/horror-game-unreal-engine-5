@@ -12,6 +12,7 @@
 #include "HGGameMode.h"
 #include "HGLevel.h"
 #include "HGMonster.h"
+#include "EngineUtils.h"
 #include "InputCoreTypes.h"
 #include "Kismet/KismetSystemLibrary.h"
 
@@ -101,6 +102,30 @@ void AHGPlayer::BeginPlay()
 {
 	Super::BeginPlay();
 	LightDiesAt = GetWorld()->GetTimeSeconds() + FMath::FRandRange(22.f, 34.f);
+	const AHGGameMode* Game = GetWorld()->GetAuthGameMode<AHGGameMode>();
+	if (Game && Game->GetVariant() == EHGVariant::Ward)
+	{
+		// Five years old: eyes a metre off the floor, short legs, nothing in his hands but toys.
+		bChild = true;
+		GetCapsuleComponent()->SetCapsuleSize(24.f, 55.f);
+		Camera->SetRelativeLocation(FVector(0.f, 0.f, 42.f));
+		Camera->PostProcessSettings.AutoExposureBias = 8.9f;
+		Camera->PostProcessSettings.VignetteIntensity = 0.3f;
+		Camera->PostProcessSettings.FilmGrainIntensity = 0.12f;
+		// Bright and punchy, the way a happy memory is: strong colour, deep shadows.
+		Camera->PostProcessSettings.bOverride_ColorSaturation = true;
+		Camera->PostProcessSettings.ColorSaturation = FVector4(1.3f, 1.3f, 1.3f, 1.f);
+		Camera->PostProcessSettings.bOverride_ColorContrast = true;
+		Camera->PostProcessSettings.ColorContrast = FVector4(1.18f, 1.18f, 1.18f, 1.f);
+		Flashlight->SetIntensity(0.f);
+		HandLight->SetIntensity(0.f);
+	}
+	if (Game && Game->GetVariant() == EHGVariant::Hospital)
+	{
+		// A ready-made map is lit by its own artists; our fixed exposure was tuned for the text-built places.
+		Camera->PostProcessSettings.bOverride_AutoExposureMethod = false;
+		Camera->PostProcessSettings.bOverride_AutoExposureBias = false;
+	}
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		PC->SetInputMode(FInputModeGameOnly());
@@ -307,6 +332,59 @@ void AHGPlayer::UseItem()
 	UseKick = 1.f;
 }
 
+void AHGPlayer::Interact()
+{
+	const FVector Eye = EyeLocation();
+	const FVector Forward = EyeForward();
+	FCollisionQueryParams Params(FName(TEXT("HGReach")), false, this);
+	if (Held)
+	{
+		Params.AddIgnoredActor(Held);
+	}
+	FHitResult Hit;
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, Eye, Eye + Forward * 230.f, ECC_Visibility, Params);
+
+	if (!Held)
+	{
+		AHGToy* Toy = bHit ? Cast<AHGToy>(Hit.GetActor()) : nullptr;
+		if (Toy && !Toy->bPlaced)
+		{
+			Toy->AttachToComponent(Hand, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+			Toy->SetActorRelativeLocation(FVector(0.f, 0.f, -6.f));
+			Held = Toy;
+			UseKick = 0.4f;
+			HG::Play(this, TEXT("pickup"), 0.5f, 1.25f);
+		}
+		return;
+	}
+
+	// Holding something: post it if the sorter is in reach and it fits, otherwise put it down where he is looking.
+	AHGSorter* Sorter = bHit ? Cast<AHGSorter>(Hit.GetActor()) : nullptr;
+	if (!Sorter)
+	{
+		TActorIterator<AHGSorter> Nearby(GetWorld());
+		if (Nearby && FVector::Dist2D(Nearby->GetActorLocation(), GetActorLocation()) < 140.f)
+		{
+			Sorter = *Nearby;
+		}
+	}
+	if (Sorter && Sorter->Accept(Held))
+	{
+		Held = nullptr;
+		return;
+	}
+	FVector Spot = bHit ? Hit.ImpactPoint + Hit.ImpactNormal * 4.f : Eye + Forward * 110.f;
+	FHitResult Floor;
+	if (GetWorld()->LineTraceSingleByChannel(Floor, Spot + FVector(0, 0, 10), Spot - FVector(0, 0, 300), ECC_Visibility, Params))
+	{
+		Spot = Floor.ImpactPoint;
+	}
+	Held->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	Held->SetActorLocationAndRotation(Spot, FRotator(0.f, FMath::FRandRange(0.f, 360.f), 0.f));
+	Held = nullptr;
+	HG::Play(this, TEXT("step_1"), 0.25f, 1.5f);
+}
+
 void AHGPlayer::SmackFlashlight()
 {
 	AHGGameMode* Game = GetWorld()->GetAuthGameMode<AHGGameMode>();
@@ -343,6 +421,8 @@ void AHGPlayer::HandleKeys(APlayerController* PC, AHGGameMode* Game)
 	if (PC->WasInputKeyJustPressed(EKeys::F1)) { Game->Travel(EHGVariant::Clinic); return; }
 	if (PC->WasInputKeyJustPressed(EKeys::F2)) { Game->Travel(EHGVariant::Office); return; }
 	if (PC->WasInputKeyJustPressed(EKeys::F3)) { Game->Travel(EHGVariant::Mine); return; }
+	if (PC->WasInputKeyJustPressed(EKeys::F4)) { Game->Travel(EHGVariant::Hospital); return; }
+	if (PC->WasInputKeyJustPressed(EKeys::F5)) { Game->Travel(EHGVariant::Ward); return; }
 	if (PC->WasInputKeyJustPressed(EKeys::R) && Game->IsOver())
 	{
 		Game->Travel(Game->GetVariant());
@@ -353,6 +433,11 @@ void AHGPlayer::HandleKeys(APlayerController* PC, AHGGameMode* Game)
 		return;
 	}
 
+	if (bChild)
+	{
+		if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton) || PC->WasInputKeyJustPressed(EKeys::E)) { Interact(); }
+		return;
+	}
 	if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton)) { UseItem(); }
 	if (PC->WasInputKeyJustPressed(EKeys::F)) { SmackFlashlight(); }
 	if (PC->WasInputKeyJustPressed(EKeys::One)) { SelectSlot(0); }
@@ -451,7 +536,7 @@ void AHGPlayer::Tick(float DeltaSeconds)
 		PC->SetControlRotation(Control);
 		return;
 	}
-	if (Game->IsOver())
+	if (Game->IsOver() || Game->IsLoading())
 	{
 		return;
 	}
@@ -471,7 +556,7 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	const float Right = (PC->IsInputKeyDown(EKeys::D) ? 1.f : 0.f) - (PC->IsInputKeyDown(EKeys::A) ? 1.f : 0.f);
 	const bool bSprint = PC->IsInputKeyDown(EKeys::LeftShift);
 	const bool bTiptoe = PC->IsInputKeyDown(EKeys::LeftControl) || PC->IsInputKeyDown(EKeys::C);
-	GetCharacterMovement()->MaxWalkSpeed = bTiptoe ? TiptoeSpeed : (bSprint ? SprintSpeed : WalkSpeed);
+	GetCharacterMovement()->MaxWalkSpeed = bChild ? (bSprint ? 300.f : 190.f) : (bTiptoe ? TiptoeSpeed : (bSprint ? SprintSpeed : WalkSpeed));
 	const FRotationMatrix Facing(FRotator(0.f, Control.Yaw, 0.f));
 	AddMovementInput(Facing.GetUnitAxis(EAxis::X), Forward);
 	AddMovementInput(Facing.GetUnitAxis(EAxis::Y), Right);
@@ -492,8 +577,11 @@ void AHGPlayer::Tick(float DeltaSeconds)
 		HG::Play(this, Steps[StepCount++ % 3], bTiptoe ? 0.1f : (bRunning ? 0.7f : 0.4f), FMath::FRandRange(0.93f, 1.07f));
 	}
 
-	UpdateFlashlight(DeltaSeconds, Game);
-	UpdateComposure(DeltaSeconds, Game);
+	if (!bChild)
+	{
+		UpdateFlashlight(DeltaSeconds, Game);
+		UpdateComposure(DeltaSeconds, Game);
+	}
 
 	// The held item bobs with the walk and kicks when used.
 	Bob += Speed * DeltaSeconds * 0.035f;

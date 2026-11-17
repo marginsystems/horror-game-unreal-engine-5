@@ -7,6 +7,7 @@ class UAudioComponent;
 class UMaterialInstanceDynamic;
 class UPrimitiveComponent;
 class USceneComponent;
+class USkeletalMeshComponent;
 class USoundBase;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -14,7 +15,7 @@ class UStaticMeshComponent;
 DECLARE_LOG_CATEGORY_EXTERN(LogHG, Log, All);
 
 /** The three previews. Each one is a place plus the monster that lives there. */
-enum class EHGVariant : uint8 { Clinic, Office, Mine };
+enum class EHGVariant : uint8 { Clinic, Office, Mine, Hospital, Ward };
 
 enum class EHGMonster : uint8 { Walker, Librarian, Mouth };
 
@@ -34,6 +35,8 @@ namespace HG
 	const TCHAR* VariantTitle(EHGVariant V);
 	EHGVariant VariantFromKey(const FString& Key);
 	EHGMonster MonsterFor(EHGVariant V);
+	/** The map a preview runs in. Three are built from text on an empty map; the hospital is a ready-made map from the private kit. */
+	const TCHAR* MapFor(EHGVariant V);
 	const TCHAR* ItemName(EHGItem I);
 
 	/** Engine basic shape by name: Cube, Sphere, Cylinder, Cone or Plane. All are 100 units across. */
@@ -48,6 +51,15 @@ namespace HG
 		float Glow = 0.f, bool bCollide = false, const FRotator& RelRotation = FRotator::ZeroRotator);
 
 	USceneComponent* AddPivot(AActor* Owner, USceneComponent* Parent, const FVector& RelLocation);
+
+	/**
+	 * A person: the animation library's own skeleton (hidden) with the given skinned meshes following
+	 * it bone for bone. Paths are full object paths in the private assets plugin. Null when the
+	 * plugin is not installed.
+	 */
+	USkeletalMeshComponent* AddPerson(AActor* Owner, USceneComponent* Parent, TConstArrayView<FString> SkinPaths, float Scale);
+	/** Plays one clip of the animation library on a person made by AddPerson. */
+	void PlayPersonClip(USkeletalMeshComponent* Rig, const TCHAR* ClipName, float Rate = 1.f, bool bLoop = true);
 
 	/** For painted things that move: pins the grime pattern to the object so it does not slide over it. */
 	void MarkMoving(UPrimitiveComponent* Comp);

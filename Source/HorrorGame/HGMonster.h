@@ -48,6 +48,8 @@ private:
 	enum class EState : uint8 { Patrol, Investigate, Linger, Hunt, WindUp, Charge };
 
 	void BuildStandIn(const FLinearColor& Color, float Height);
+	/** Builds a rigged creature that carries its own clips (one imported file). False when it is not there. */
+	bool BuildCreature(const TCHAR* MeshPath, const TCHAR* InClipPrefix, float Scale);
 	/** Builds the rigged, animated human from the private assets plugin. False when the plugin is not there. */
 	bool BuildHuman(float Scale, const FLinearColor& Tint);
 	/** Plays one clip of the animation library on the rig. Does nothing if it is already playing. */
@@ -108,6 +110,9 @@ private:
 	TObjectPtr<USkeletalMeshComponent> Rig;
 
 	FName Clip;
+	/** Asset path that every clip name is appended to, and the clip this body runs with. */
+	FString ClipPrefix;
+	const TCHAR* RunClip = TEXT("Sprint_Loop");
 
 	/** The Mouth's top jaw. */
 	UPROPERTY()

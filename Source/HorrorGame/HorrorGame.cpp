@@ -1,6 +1,9 @@
 #include "HGTypes.h"
 
+#include "Animation/AnimSequence.h"
 #include "Components/AudioComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -85,6 +88,8 @@ namespace HG
 		{
 		case EHGVariant::Office: return TEXT("office");
 		case EHGVariant::Mine: return TEXT("mine");
+		case EHGVariant::Hospital: return TEXT("hospital");
+		case EHGVariant::Ward: return TEXT("ward");
 		default: return TEXT("clinic");
 		}
 	}
@@ -95,6 +100,8 @@ namespace HG
 		{
 		case EHGVariant::Office: return TEXT("THE OFFICE  -  she can hear you");
 		case EHGVariant::Mine: return TEXT("THE MINE  -  it cannot turn corners");
+		case EHGVariant::Hospital: return TEXT("THE HOSPITAL  -  do not look away");
+		case EHGVariant::Ward: return TEXT("RUSSIA, 1997");
 		default: return TEXT("THE NIGHT CLINIC  -  do not look away");
 		}
 	}
@@ -103,6 +110,8 @@ namespace HG
 	{
 		if (Key.Equals(TEXT("office"), ESearchCase::IgnoreCase)) { return EHGVariant::Office; }
 		if (Key.Equals(TEXT("mine"), ESearchCase::IgnoreCase)) { return EHGVariant::Mine; }
+		if (Key.Equals(TEXT("hospital"), ESearchCase::IgnoreCase)) { return EHGVariant::Hospital; }
+		if (Key.Equals(TEXT("ward"), ESearchCase::IgnoreCase)) { return EHGVariant::Ward; }
 		return EHGVariant::Clinic;
 	}
 
@@ -114,6 +123,11 @@ namespace HG
 		case EHGVariant::Mine: return EHGMonster::Mouth;
 		default: return EHGMonster::Walker;
 		}
+	}
+
+	const TCHAR* MapFor(EHGVariant V)
+	{
+		return V == EHGVariant::Hospital ? TEXT("/Game/Horror_Hospital/Maps/DemoMap") : TEXT("/Engine/Maps/Entry");
 	}
 
 	const TCHAR* ItemName(EHGItem I)
@@ -179,6 +193,60 @@ namespace HG
 		return Comp;
 	}
 
+	USkeletalMeshComponent* AddPerson(AActor* Owner, USceneComponent* Parent, TConstArrayView<FString> SkinPaths, float Scale)
+	{
+		USkeletalMesh* RigMesh = LoadObject<USkeletalMesh>(nullptr, TEXT("/HorrorPrivate/Characters/UAL1/UAL1_Standard/SkeletalMeshes/UAL1_Standard.UAL1_Standard"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (!RigMesh)
+		{
+			return nullptr;
+		}
+		USkeletalMeshComponent* Rig = NewObject<USkeletalMeshComponent>(Owner);
+		Rig->SetMobility(EComponentMobility::Movable);
+		Rig->SetupAttachment(Parent);
+		Rig->SetSkeletalMeshAsset(RigMesh);
+		Rig->SetRelativeScale3D(FVector(Scale));
+		// The imported bodies face +Y; the game's people face +X.
+		Rig->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+		Rig->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Rig->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+		Rig->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+		Rig->SetVisibility(false);
+		Rig->RegisterComponent();
+		Owner->AddInstanceComponent(Rig);
+		for (const FString& Path : SkinPaths)
+		{
+			USkeletalMesh* SkinMesh = LoadObject<USkeletalMesh>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+			if (!SkinMesh)
+			{
+				UE_LOG(LogHG, Warning, TEXT("HGTEST MISSING person part %s"), *Path);
+				continue;
+			}
+			USkeletalMeshComponent* Skin = NewObject<USkeletalMeshComponent>(Owner);
+			Skin->SetMobility(EComponentMobility::Movable);
+			Skin->SetupAttachment(Rig);
+			Skin->SetSkeletalMeshAsset(SkinMesh);
+			Skin->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Skin->SetLeaderPoseComponent(Rig);
+			Skin->RegisterComponent();
+			Owner->AddInstanceComponent(Skin);
+		}
+		return Rig;
+	}
+
+	void PlayPersonClip(USkeletalMeshComponent* Rig, const TCHAR* ClipName, float Rate, bool bLoop)
+	{
+		if (!Rig)
+		{
+			return;
+		}
+		const FString Path = FString::Printf(TEXT("/HorrorPrivate/Characters/UAL1/UAL1_Standard/SkeletalMeshes/UAL1_Standard%s.UAL1_Standard%s"), ClipName, ClipName);
+		if (UAnimSequence* Sequence = LoadObject<UAnimSequence>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			Rig->PlayAnimation(Sequence, bLoop);
+			Rig->SetPlayRate(Rate);
+		}
+	}
+
 	void MarkMoving(UPrimitiveComponent* Comp)
 	{
 		for (int32 i = 0; Comp && i < Comp->GetNumMaterials(); ++i)
@@ -242,6 +310,7 @@ namespace HG
 			TEXT("Gary_Body"), TEXT("Gary_Head"), TEXT("Gary_Arm"),
 			TEXT("Librarian_Body"), TEXT("Librarian_Head"), TEXT("Librarian_Arm"), TEXT("Librarian_Shush"),
 			TEXT("Mouth_Top"), TEXT("Mouth_Bottom"),
+			TEXT("Toy_Sorter"), TEXT("Toy_Circle"), TEXT("Toy_Square"), TEXT("Toy_Triangle"),
 		};
 		return Names;
 	}

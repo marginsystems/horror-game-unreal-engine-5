@@ -28,3 +28,6 @@ Config/UserGame.ini
 
 # Private assets plugin: a clone of the private repo (Scripts/get-private-assets.sh)
 Plugins/HorrorPrivate/
+
+# Fab packs the Epic launcher adds to the project. Fab Standard License: never commit them here.
+Content/Horror_Hospital/
