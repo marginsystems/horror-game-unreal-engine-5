@@ -396,7 +396,7 @@ void AHGPlayer::UpdateComposure(float Dt, AHGGameMode* Game)
 	}
 
 	AHGMonster* Monster = Game->GetMonster();
-	const FVector Chest = Monster ? Monster->GetActorLocation() + FVector(0, 0, 160) : FVector::ZeroVector;
+	const FVector Chest = Monster ? Monster->Chest() : FVector::ZeroVector;
 	const bool bStaring = Monster && FVector::Dist(EyeLocation(), Chest) < 2400.f && CanObserve(Chest);
 	Composure = FMath::Clamp(Composure + (bStaring ? -Dt / 4.f : Dt / 5.f), 0.f, 1.f);
 

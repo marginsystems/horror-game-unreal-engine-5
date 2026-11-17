@@ -36,6 +36,8 @@ public:
 	/** Breadth-first path. OutPath leaves out From and ends with To. */
 	bool FindPath(FIntPoint From, FIntPoint To, TArray<FIntPoint>& OutPath) const;
 	bool HasLineOfSight(const FVector& A, const FVector& B) const;
+	/** How far From can go along a flat Direction before it meets a wall, or -1 if there is none within MaxDistance. */
+	float WallDistance(const FVector& From, const FVector& Direction, float MaxDistance) const;
 	FIntPoint RandomOpenTile() const;
 	FIntPoint NearestOpenTile(FIntPoint T) const;
 

@@ -423,12 +423,12 @@ void AHGGameMode::TickShots(float Dt, AHGPlayer* Player)
 				Monster->Stun(600.f);
 			}
 			Player->SetActorLocation(Level->ToWorld(Spot, 100.f));
-			Player->LookAt(Monster->GetActorLocation() + FVector(0, 0, 150));
+			Player->LookAt(Monster->Chest());
 			Next();
 		}
 		break;
 	case 2:
-		Player->LookAt(Monster->GetActorLocation() + FVector(0, 0, 150));
+		Player->LookAt(Monster->Chest());
 		if (Monster->Kind != EHGMonster::Walker)
 		{
 			// Held still for the picture, so turn it to face the camera.

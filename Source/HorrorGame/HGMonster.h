@@ -9,6 +9,7 @@ class AHGLevel;
 class AHGPlayer;
 class UAudioComponent;
 class UPointLightComponent;
+class UStaticMeshComponent;
 class UTextRenderComponent;
 
 /**
@@ -31,6 +32,9 @@ public:
 	/** Something made a sound it can hear. It goes there and lingers for HoldSeconds. False when it ignores it. */
 	bool HearNoise(const FVector& Location, float HoldSeconds, bool bFootstep);
 	void Stun(float Seconds);
+
+	/** The middle of its body in the world, wherever it has put itself: the point the player has to see to be watching it. */
+	FVector Chest() const;
 
 	const TCHAR* DisplayName() const;
 	const TCHAR* CatchLine() const;
@@ -62,7 +66,25 @@ private:
 	void Shout(const TCHAR* Text, float Seconds, const FColor& Color);
 	void StrikeAPose();
 	void Footsteps();
-	void Animate(float Dt);
+	void Animate(float Dt, AHGPlayer* Player);
+	void UpdateLegs(float Dt);
+
+	/** One of the Mouth's legs. The foot stays planted on a wall or the floor until the body has left it behind. */
+	struct FLeg
+	{
+		FVector Hip = FVector::ZeroVector;
+		float Side = 1.f;
+		float Along = 0.f;
+		int32 Group = 0;
+		FVector Foot = FVector::ZeroVector;
+		FVector From = FVector::ZeroVector;
+		float Step = 1.f;
+		bool bPlaced = false;
+		UStaticMeshComponent* Upper = nullptr;
+		UStaticMeshComponent* Lower = nullptr;
+		UStaticMeshComponent* Knee = nullptr;
+	};
+	TArray<FLeg> Legs;
 
 	UPROPERTY()
 	TObjectPtr<USceneComponent> Root;
@@ -102,6 +124,8 @@ private:
 	float Age = 0.f;
 	float StepBank = 0.f;
 	float JawAngle = 16.f;
+	float TwitchLeft = 0.f;
+	float TwitchIn = 2.f;
 	FVector LastSpot = FVector::ZeroVector;
 	bool bWasObserved = false;
 	FVector NoiseLocation = FVector::ZeroVector;

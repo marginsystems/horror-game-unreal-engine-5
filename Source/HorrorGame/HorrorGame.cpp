@@ -179,6 +179,17 @@ namespace HG
 		return Comp;
 	}
 
+	void MarkMoving(UPrimitiveComponent* Comp)
+	{
+		for (int32 i = 0; Comp && i < Comp->GetNumMaterials(); ++i)
+		{
+			if (UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Comp->GetMaterial(i)))
+			{
+				Material->SetScalarParameterValue(TEXT("Local"), 1.f);
+			}
+		}
+	}
+
 	TConstArrayView<const TCHAR*> SoundNames()
 	{
 		static const TCHAR* Names[] = {
@@ -271,6 +282,7 @@ namespace HG
 			UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, Comp);
 			Material->SetVectorParameterValue(TEXT("Color"), Color);
 			Material->SetScalarParameterValue(TEXT("Glow"), Glow);
+			Material->SetScalarParameterValue(TEXT("Local"), 1.f);
 			Comp->SetMaterial(i, Material);
 		}
 		return Comp;

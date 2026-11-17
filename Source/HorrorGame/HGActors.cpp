@@ -65,6 +65,11 @@ void AHGPickup::BuildItem(AActor* Owner, USceneComponent* Parent, EHGItem Item, 
 	default:
 		break;
 	}
+	// Items spin on the floor and swing in the hand, so their grime is pinned to them.
+	for (USceneComponent* Part : OutParts)
+	{
+		HG::MarkMoving(Cast<UPrimitiveComponent>(Part));
+	}
 }
 
 void AHGPickup::Setup(EHGItem InItem)
@@ -137,6 +142,7 @@ void AHGThrown::Launch(EHGItem InItem, const FVector& Velocity)
 	Body->SetStaticMesh(HG::Shape(TEXT("Sphere")));
 	Body->SetWorldScale3D(bChicken ? FVector(0.34f, 0.2f, 0.2f) : FVector(0.16f, 0.16f, 0.2f));
 	HG::Paint(Body, bChicken ? FLinearColor(1.f, 0.8f, 0.1f) : FLinearColor(0.12f, 0.2f, 0.08f));
+	HG::MarkMoving(Body);
 	Body->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	Body->SetCollisionObjectType(ECC_PhysicsBody);
 	Body->SetCollisionResponseToAllChannels(ECR_Block);
@@ -152,7 +158,7 @@ void AHGThrown::Launch(EHGItem InItem, const FVector& Velocity)
 
 	if (bChicken)
 	{
-		HG::AddShape(this, Body, TEXT("Cone"), FVector(52, 0, 10), FVector(0.2f, 0.3f, 0.35f), FLinearColor(1.f, 0.35f, 0.05f), 0.f, false, FRotator(-90.f, 0.f, 0.f));
+		HG::MarkMoving(HG::AddShape(this, Body, TEXT("Cone"), FVector(52, 0, 10), FVector(0.2f, 0.3f, 0.35f), FLinearColor(1.f, 0.35f, 0.05f), 0.f, false, FRotator(-90.f, 0.f, 0.f)));
 	}
 	else
 	{
@@ -290,6 +296,7 @@ void AHGConfetti::Burst(const FVector& Direction)
 		UStaticMeshComponent* Bit = HG::AddShape(this, Root, TEXT("Cube"), Offset,
 			FVector(0.07f, 0.07f, 0.008f), Colors[i % UE_ARRAY_COUNT(Colors)], 2.f, true,
 			FRotator(FMath::FRandRange(0.f, 360.f), FMath::FRandRange(0.f, 360.f), 0.f));
+		HG::MarkMoving(Bit);
 		Bit->SetCollisionObjectType(ECC_PhysicsBody);
 		Bit->SetCollisionResponseToAllChannels(ECR_Ignore);
 		Bit->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);

@@ -432,3 +432,25 @@ FIntPoint AHGLevel::NearestOpenTile(FIntPoint T) const
 	}
 	return PlayerTile;
 }
+
+float AHGLevel::WallDistance(const FVector& From, const FVector& Direction, float MaxDistance) const
+{
+	float Open = 0.f;
+	for (float D = 20.f; D <= MaxDistance; D += 20.f)
+	{
+		if (!IsOpen(ToTile(From + Direction * D)))
+		{
+			// Somewhere in the last step. Halve it until the answer is within a couple of units.
+			float Solid = D;
+			for (int32 i = 0; i < 5; ++i)
+			{
+				const float Mid = (Open + Solid) * 0.5f;
+				if (IsOpen(ToTile(From + Direction * Mid))) { Open = Mid; }
+				else { Solid = Mid; }
+			}
+			return Open;
+		}
+		Open = D;
+	}
+	return -1.f;
+}

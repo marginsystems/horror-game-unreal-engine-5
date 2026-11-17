@@ -22,7 +22,7 @@ from mathutils import Euler, Matrix, Vector, noise
 PIVOTS = {
     "Gary_Body": (0.0, 0.0, 0.0),
     "Gary_Head": (0.0, 0.0, 2.26),
-    "Gary_Arm": (0.0, 0.27, 2.02),
+    "Gary_Arm": (0.0, 0.25, 2.02),
     "Librarian_Body": (0.0, 0.0, 0.0),
     "Librarian_Head": (0.0, 0.0, 2.20),
     "Librarian_Arm": (0.0, 0.24, 1.93),
@@ -120,7 +120,7 @@ def limb(start, end, radius_start, radius_end, mat, segments=12, round_ends=True
     end = Vector(end)
     along = end - start
     bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=not round_ends, cap_tris=False, segments=segments,
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segments,
                           radius1=radius_start, radius2=radius_end, depth=along.length)
     bm.transform(Matrix.Translation((start + end) * 0.5) @ aim(along))
     if round_ends:
@@ -215,88 +215,122 @@ def finish(name, parts):
     return obj
 
 
+def fuse(parts, mat, voxel=0.018, lumps=0.004):
+    """Melts overlapping parts into one skin, so a body reads as flesh and not as stacked shapes."""
+    bpy.ops.object.select_all(action="DESELECT")
+    for part in parts:
+        part.select_set(True)
+    bpy.context.view_layer.objects.active = parts[0]
+    bpy.ops.object.join()
+    obj = bpy.context.view_layer.objects.active
+    remesh = obj.modifiers.new("fuse", "REMESH")
+    remesh.mode = "VOXEL"
+    remesh.voxel_size = voxel
+    bpy.ops.object.modifier_apply(modifier=remesh.name)
+    soften = obj.modifiers.new("soften", "SMOOTH")
+    soften.factor = 0.7
+    soften.iterations = 8
+    bpy.ops.object.modifier_apply(modifier=soften.name)
+    if lumps:
+        for vertex in obj.data.vertices:
+            bump = noise.noise(vertex.co * 11.0) + 0.5 * noise.noise(vertex.co * 27.0)
+            vertex.co += vertex.normal * lumps * bump
+    obj.data.materials.clear()
+    obj.data.materials.append(mat)
+    return obj
+
+
 # ------------------------------------------------------------------------------------------
-# Gary: a shop mannequin, far too tall, with a name tag and a smile somebody drew on.
+# Gary: a starved, grey thing the height of a doorway, with a name tag somebody pinned on it.
 
 def build_gary():
-    shell = material("2A2A30")
-    joint = material("6E6E78")
-    eye = material("FFFFFF", 60)
-    tag = material("F2F2EA", 1)
-    red = material("C81E1E")
-    smile = material("E8E0D0", 3)
+    skin = material("B8B0A2")
+    dark = material("070505")
+    glint = material("FFF4E0", 40)
+    tooth = material("CFC6A4")
+    tag = material("E8E4D8", 1)
+    red = material("8E1818")
 
-    body = []
+    flesh = []
     for side in (-1.0, 1.0):
-        body.append(ellipsoid((0.07, side * 0.13, 0.045), (0.15, 0.065, 0.045), shell))
-        body.append(sphere((0.0, side * 0.13, 0.10), 0.045, joint))
-        body.append(limb((0.0, side * 0.13, 0.13), (0.01, side * 0.13, 0.61), 0.042, 0.055, shell))
-        body.append(sphere((0.01, side * 0.13, 0.66), 0.065, joint))
-        body.append(limb((0.01, side * 0.13, 0.71), (0.0, side * 0.115, 1.22), 0.06, 0.08, shell))
-        body.append(sphere((0.0, side * 0.27, 2.02), 0.078, joint))
-    body.append(ellipsoid((0.0, 0.0, 1.30), (0.14, 0.20, 0.13), shell))
-    body.append(sphere((0.0, 0.0, 1.45), 0.085, joint))
-    body.append(ellipsoid((0.0, 0.0, 1.60), (0.115, 0.165, 0.17), shell))
-    body.append(ellipsoid((0.0, 0.0, 1.88), (0.155, 0.25, 0.26), shell))
-    body.append(limb((0.0, 0.0, 2.08), (0.0, 0.0, 2.27), 0.05, 0.042, joint))
+        flesh.append(ellipsoid((0.09, side * 0.11, 0.035), (0.15, 0.05, 0.035), skin))
+        flesh.append(limb((0.0, side * 0.11, 0.06), (0.03, side * 0.115, 0.62), 0.03, 0.04, skin))
+        flesh.append(sphere((0.035, side * 0.115, 0.64), 0.055, skin))
+        flesh.append(limb((0.03, side * 0.115, 0.66), (-0.02, side * 0.10, 1.20), 0.042, 0.06, skin))
+        flesh.append(sphere((-0.02, side * 0.13, 1.25), 0.075, skin))
+        flesh.append(sphere((-0.03, side * 0.25, 2.02), 0.06, skin))
+        flesh.append(limb((-0.01, side * 0.04, 2.06), (-0.03, side * 0.25, 2.03), 0.03, 0.03, skin))
+    flesh.append(ellipsoid((-0.02, 0.0, 1.28), (0.09, 0.15, 0.09), skin))
+    # A hunched spine you can count, a hollow belly and a cage of ribs.
+    for x, z in ((-0.06, 1.30), (-0.09, 1.42), (-0.11, 1.54), (-0.12, 1.66), (-0.12, 1.78), (-0.105, 1.90), (-0.08, 2.00), (-0.05, 2.09)):
+        flesh.append(sphere((x, 0.0, z), 0.05, skin))
+    flesh.append(ellipsoid((-0.04, 0.0, 1.50), (0.07, 0.10, 0.17), skin))
+    flesh.append(ellipsoid((-0.02, 0.0, 1.86), (0.12, 0.195, 0.22), skin))
+    for k in range(6):
+        width = 0.205 * (0.80 + 0.20 * math.sin(math.pi * (k + 0.5) / 6.0))
+        flesh.append(ring((-0.02, 0.0, 1.71 + 0.055 * k), width, 0.017, skin, rotation=(0.0, math.radians(12.0), 0.0), scale=(0.64, 1.0, 1.0)))
+    flesh.append(limb((-0.04, 0.0, 2.08), (0.0, 0.0, 2.27), 0.035, 0.032, skin))
+    body = fuse(flesh, skin)
     # HELLO my name is
-    body.append(box((0.146, 0.10, 1.925), (0.012, 0.10, 0.05), tag))
-    body.append(box((0.147, 0.10, 1.96), (0.012, 0.10, 0.022), red))
-    finish("Gary_Body", body)
+    finish("Gary_Body", [body, box((0.097, 0.08, 1.925), (0.012, 0.09, 0.045), tag), box((0.098, 0.08, 1.955), (0.012, 0.09, 0.02), red)])
 
-    head = [
-        ellipsoid((0.01, 0.0, 2.44), (0.13, 0.115, 0.165), shell),
-        ellipsoid((0.025, 0.0, 2.37), (0.105, 0.095, 0.12), shell),
+    skull = [
+        ellipsoid((0.01, 0.0, 2.45), (0.12, 0.10, 0.15), skin),
+        ellipsoid((0.04, 0.0, 2.385), (0.085, 0.08, 0.09), skin),
+        ellipsoid((0.055, 0.0, 2.265), (0.06, 0.062, 0.05), skin),
     ]
     for side in (-1.0, 1.0):
-        head.append(sphere((0.128, side * 0.045, 2.47), 0.017, eye))
-    head.append(ring((0.128, 0.0, 2.405), 0.055, 0.007, smile, rotation=(0.0, math.radians(90.0), 0.0),
-                     arc=(math.radians(-62.0), math.radians(62.0))))
+        skull.append(limb((0.0, side * 0.07, 2.37), (0.045, side * 0.052, 2.27), 0.024, 0.02, skin))
+    head = [fuse(skull, skin, voxel=0.012), ellipsoid((0.078, 0.0, 2.32), (0.04, 0.042, 0.062), dark)]
+    for side in (-1.0, 1.0):
+        head.append(sphere((0.10, side * 0.045, 2.47), 0.033, dark, 14, 10))
+        head.append(sphere((0.131, side * 0.045, 2.468), 0.007, glint, 8, 6))
+    for y in (-0.036, -0.018, 0.0, 0.018, 0.036):
+        head.append(spike((0.108 - abs(y) * 0.5, y, 2.345), (0.0, 0.0, -1.0), 0.008, 0.035, tooth))
     finish("Gary_Head", head)
 
-    # One arm, hanging from the shoulder. The game mirrors nothing: both sides use it as it is.
     sx, sy, sz = PIVOTS["Gary_Arm"]
     def at(x, y, z):
         return (sx + x, sy + y, sz + z)
-    arm = [
-        limb(at(0.0, 0.0, -0.06), at(0.0, 0.0, -0.50), 0.05, 0.042, shell),
-        sphere(at(0.0, 0.0, -0.55), 0.052, joint),
-        limb(at(0.0, 0.0, -0.60), at(0.03, 0.0, -1.05), 0.042, 0.032, shell),
-        sphere(at(0.035, 0.0, -1.09), 0.038, joint),
-        ellipsoid(at(0.04, 0.0, -1.17), (0.028, 0.05, 0.07), shell),
-        limb(at(0.045, 0.045, -1.14), at(0.08, 0.085, -1.25), 0.012, 0.008, shell, 8),
-    ]
-    for i, y in enumerate((-0.036, -0.012, 0.012, 0.036)):
-        arm.append(limb(at(0.04, y, -1.22), at(0.06 + 0.012 * i, y * 1.6, -1.43 + abs(y) * 0.8), 0.011, 0.007, shell, 8))
+    arm = [fuse([
+        limb(at(0.0, 0.0, -0.03), at(0.0, 0.0, -0.52), 0.035, 0.028, skin),
+        sphere(at(0.0, 0.0, -0.55), 0.042, skin),
+        limb(at(0.0, 0.0, -0.57), at(0.03, 0.0, -1.12), 0.03, 0.022, skin),
+        sphere(at(0.035, 0.0, -1.15), 0.03, skin),
+        ellipsoid(at(0.04, 0.0, -1.21), (0.022, 0.045, 0.07), skin),
+    ], skin, voxel=0.011)]
+    # Fingers twice as long as fingers should be.
+    arm.append(limb(at(0.045, 0.04, -1.18), at(0.09, 0.10, -1.36), 0.011, 0.004, skin, 8))
+    for i, y in enumerate((-0.033, -0.011, 0.011, 0.033)):
+        arm.append(limb(at(0.04, y, -1.26), at(0.07 + 0.012 * i, y * 1.9, -1.57 + abs(y) * 1.2), 0.011, 0.004, skin, 8))
     finish("Gary_Arm", arm)
 
 
 # ------------------------------------------------------------------------------------------
-# The Librarian: a long dress, a cardigan, and an open book where the head should be.
+# The Librarian: a black dress, hands that reach her knees, and an open book where the head should be.
 
 def build_librarian():
-    dress = material("45554A")
-    cardigan = material("8A6A2A")
-    paper = material("EDE8D3")
-    skin = material("BDB8A8")
-    cover = material("8E2F2F")
-    ink = material("2A2620")
+    dress = material("1B201E")
+    cardigan = material("33291F")
+    paper = material("D9D2BA")
+    skin = material("C4BCAA")
+    cover = material("4A1414")
+    ink = material("1E1A16")
     lens = material("B4FF96", 30)
-    frame = material("1A1A1A")
-    ribbon = material("C8202A", 1)
+    frame = material("0E0E0E")
+    ribbon = material("8A1218", 1)
 
     body = [
-        skirt(0.52, 0.13, 1.52, dress),
-        ellipsoid((0.0, 0.0, 1.70), (0.14, 0.20, 0.30), cardigan),
-        ellipsoid((0.0, 0.0, 1.90), (0.12, 0.26, 0.10), cardigan),
-        ring((0.0, 0.0, 1.50), 0.135, 0.022, ink),
-        ring((0.0, 0.0, 1.99), 0.085, 0.03, paper, scale=(1.0, 1.0, 0.6)),
-        limb((0.0, 0.0, 1.98), (0.0, 0.0, 2.22), 0.04, 0.035, skin),
+        skirt(0.50, 0.12, 1.52, dress),
+        fuse([
+            ellipsoid((0.0, 0.0, 1.70), (0.12, 0.18, 0.30), cardigan),
+            ellipsoid((-0.03, 0.0, 1.90), (0.11, 0.25, 0.10), cardigan),
+            sphere((-0.02, -0.24, 1.93), 0.065, cardigan),
+            sphere((-0.02, 0.24, 1.93), 0.065, cardigan),
+        ], cardigan),
+        ring((0.0, 0.0, 1.50), 0.125, 0.02, ink),
+        limb((0.0, 0.0, 1.96), (0.0, 0.0, 2.22), 0.032, 0.028, skin),
     ]
-    for z, x in ((1.58, 0.130), (1.70, 0.142), (1.82, 0.130)):
-        body.append(sphere((x, 0.0, z), 0.018, paper, 10, 6))
-    for side in (-1.0, 1.0):
-        body.append(sphere((0.0, side * 0.24, 1.93), 0.075, cardigan))
     finish("Librarian_Body", body)
 
     # The book is open towards you: spine at the back, pages forward, glasses resting on the pages.
@@ -313,109 +347,110 @@ def build_librarian():
             width = 0.22 if line % 4 != 3 else 0.12
             head.append(box(hinge + along * (0.05 + width * 0.5) + facing * 0.057 + Vector((0.0, 0.0, 0.19 - 0.05 * line)),
                             (0.004, width, 0.012), ink, turn))
-        # Glasses: a rim, a lit lens, an arm back to the cover, and a stern eyebrow.
         head.append(ring((0.09, side * 0.075, 2.58), 0.06, 0.007, frame, rotation=(0.0, math.radians(90.0), 0.0), major_segments=24, minor_segments=6))
         head.append(disc((0.088, side * 0.075, 2.58), 0.056, 0.006, lens, rotation=(0.0, math.radians(90.0), 0.0)))
         head.append(limb((0.09, side * 0.135, 2.58), (-0.01, side * 0.19, 2.58), 0.005, 0.005, frame, 6))
-        head.append(box((0.095, side * 0.075, 2.67), (0.008, 0.075, 0.013), frame, (side * math.radians(16.0), 0.0, 0.0)))
     head.append(limb((0.09, -0.016, 2.585), (0.09, 0.016, 2.585), 0.006, 0.006, frame, 6))
     # The bookmark hangs out of the bottom like a tongue.
-    head.append(box((0.03, 0.0, 2.20), (0.006, 0.036, 0.17), ribbon, (0.0, math.radians(-12.0), 0.0)))
+    head.append(box((0.03, 0.0, 2.19), (0.006, 0.036, 0.20), ribbon, (0.0, math.radians(-12.0), 0.0)))
     finish("Librarian_Head", head)
 
     sx, sy, sz = PIVOTS["Librarian_Arm"]
     def at(x, y, z):
         return (sx + x, sy + y, sz + z)
     arm = [
-        limb(at(0.0, 0.0, -0.03), at(0.0, 0.0, -0.48), 0.04, 0.032, cardigan),
-        limb(at(0.0, 0.0, -0.48), at(0.05, 0.0, -0.92), 0.032, 0.024, cardigan),
-        ellipsoid(at(0.055, 0.0, -0.99), (0.02, 0.035, 0.06), skin),
+        limb(at(0.0, 0.0, -0.03), at(0.0, 0.0, -0.50), 0.034, 0.026, cardigan),
+        limb(at(0.0, 0.0, -0.50), at(0.05, 0.0, -1.02), 0.026, 0.018, skin),
+        ellipsoid(at(0.055, 0.0, -1.09), (0.018, 0.035, 0.065), skin),
     ]
     for y in (-0.027, -0.009, 0.009, 0.027):
-        arm.append(limb(at(0.055, y, -1.03), at(0.075, y * 1.5, -1.23 + abs(y) * 0.9), 0.009, 0.006, skin, 8))
+        arm.append(limb(at(0.055, y, -1.13), at(0.085, y * 1.7, -1.47 + abs(y) * 1.5), 0.008, 0.003, skin, 8))
     finish("Librarian_Arm", arm)
 
     # The other arm never comes down: one finger on its way to where her lips would be.
     # Unreal flips Y on import, so "towards her middle" is +Y here for the arm the game hangs at +Y.
     inward = 1.0
     shush = [
-        limb(at(0.0, 0.0, -0.02), at(0.26, 0.02 * inward, -0.24), 0.04, 0.032, cardigan),
-        limb(at(0.26, 0.02 * inward, -0.24), at(0.19, 0.19 * inward, 0.26), 0.032, 0.024, cardigan),
-        ellipsoid(at(0.185, 0.205 * inward, 0.30), (0.035, 0.035, 0.045), skin),
-        limb(at(0.18, 0.215 * inward, 0.33), at(0.15, 0.24 * inward, 0.52), 0.011, 0.007, skin, 8),
+        limb(at(0.0, 0.0, -0.02), at(0.26, 0.02 * inward, -0.24), 0.034, 0.026, cardigan),
+        limb(at(0.26, 0.02 * inward, -0.24), at(0.19, 0.19 * inward, 0.26), 0.026, 0.018, skin),
+        ellipsoid(at(0.185, 0.205 * inward, 0.30), (0.03, 0.03, 0.04), skin),
+        limb(at(0.18, 0.215 * inward, 0.33), at(0.15, 0.24 * inward, 0.58), 0.009, 0.003, skin, 8),
     ]
     finish("Librarian_Shush", shush)
 
 
 # ------------------------------------------------------------------------------------------
-# The Mouth: two jaws, too many teeth, two small legs and two eyes that disagree.
+# The Mouth: a sack of pale skin that is nearly all jaw. Its six legs are built by the game,
+# which plants them on the walls; the knobs on the lower jaw are where they attach.
+
+LEG_SOCKETS = ((0.45, 0.74, 0.80), (0.0, 0.86, 0.80), (-0.45, 0.74, 0.80))
+
 
 def build_mouth():
-    flesh = material("91262F")
-    lip = material("B8454F")
-    lining = material("3A0508")
-    throat = material("080000")
-    tooth = material("E6E0C0", 1)
-    gold = material("FFC830", 3)
-    tongue = material("D0506A")
-    white = material("F4F4F0", 2)
-    pupil = material("050505")
-    foot = material("5E161C")
+    skin = material("A88E84")
+    gum = material("6E1A22")
+    lining = material("2A0306")
+    throat = material("050000")
+    tooth = material("D8CFA8", 1)
+    tongue = material("5E1A26")
+    bead = material("030303")
+    ember = material("FF2A10", 8)
 
     rx, ry, rz = 0.95, 0.90, 0.85
     centre = (0.0, 0.0, 1.0)
 
-    def teeth(parts, upper, missing, golden):
-        count = 15
+    def teeth(parts, upper, count, radius, thickness, longest, seed):
         for i in range(count):
-            if i in missing:
-                continue
-            angle = math.radians(-120.0 + 240.0 * i / (count - 1))
-            length = 0.15 + 0.07 * (0.5 + 0.5 * noise.noise(Vector((i * 1.7, 2.0 if upper else 5.0, 0.0))))
-            base = (rx * 0.89 * math.cos(angle), ry * 0.89 * math.sin(angle), 0.985 if upper else 1.015)
-            lean = 0.14 * (1.0 if i % 3 else -1.0)
-            direction = (lean * math.cos(angle), lean * math.sin(angle), -1.0 if upper else 1.0)
-            parts.append(spike(base, direction, 0.062, length, gold if i == golden else tooth))
+            angle = math.radians(-125.0 + 250.0 * i / (count - 1))
+            wobble = 0.5 + 0.5 * noise.noise(Vector((i * 1.7, seed, 0.0)))
+            length = longest * (0.45 + 0.55 * wobble)
+            base = (rx * radius * math.cos(angle), ry * radius * math.sin(angle), 0.985 if upper else 1.015)
+            lean = 0.22 * (wobble - 0.5)
+            direction = (lean * math.cos(angle), lean * math.sin(angle) + 0.1 * math.sin(i * 2.3), -1.0 if upper else 1.0)
+            parts.append(spike(base, direction, thickness, length, tooth))
 
     bottom = [
-        hemisphere(centre, (rx, ry, rz), flesh, upper=False, lumps=0.05),
+        hemisphere(centre, (rx, ry, rz), skin, upper=False, lumps=0.07),
         hemisphere(centre, (rx * 0.95, ry * 0.95, rz * 0.45), lining, upper=False, inside_out=True),
-        ring((0.0, 0.0, 0.985), 1.0, 0.055, lip, scale=(rx * 0.97, ry * 0.97, 1.0)),
+        ring((0.0, 0.0, 0.985), 1.0, 0.05, gum, scale=(rx * 0.97, ry * 0.97, 1.0)),
         ellipsoid((-0.45, 0.0, 0.95), (0.3, 0.4, 0.22), throat),
     ]
-    # The three front teeth are gone, which is where the tongue hangs out.
-    teeth(bottom, upper=False, missing={6, 7, 8}, golden=4)
-    path = [(0.05, 0.74), (0.30, 0.82), (0.55, 0.93), (0.78, 1.04), (0.96, 1.09), (1.07, 0.99), (1.10, 0.84)]
-    for i, (x, z) in enumerate(path):
-        nx, nz = path[min(i + 1, len(path) - 1)]
-        px, pz = path[max(i - 1, 0)]
-        pitch = -math.atan2(nz - pz, nx - px)
-        width = 0.30 - 0.02 * i
-        bottom.append(ellipsoid((x, 0.0, z), (0.17, width, 0.06), tongue, rotation=(0.0, pitch, 0.0), segments=14, rings=8))
+    teeth(bottom, False, 23, 0.90, 0.036, 0.30, 5.0)
+    teeth(bottom, False, 15, 0.76, 0.028, 0.18, 9.0)
+    # A long thin tongue that tastes the air ahead of it.
+    path = [(-0.1, 0.74), (0.2, 0.80), (0.5, 0.92), (0.78, 1.06), (1.0, 1.12), (1.2, 1.06), (1.36, 0.94), (1.46, 0.80)]
+    for i in range(len(path) - 1):
+        (ax, az), (bx, bz) = path[i], path[i + 1]
+        bottom.append(limb((ax, 0.0, az), (bx, 0.0, bz), 0.085 - 0.009 * i, 0.076 - 0.009 * i, tongue, 10))
     for side in (-1.0, 1.0):
-        bottom.append(limb((-0.05, side * 0.42, 0.32), (-0.05, side * 0.45, 0.10), 0.17, 0.15, foot))
-        bottom.append(ellipsoid((0.08, side * 0.46, 0.07), (0.26, 0.18, 0.07), foot))
-        for dy in (-0.11, 0.0, 0.11):
-            bottom.append(spike((0.28, side * 0.46 + dy, 0.045), (1.0, 0.0, 0.1), 0.045, 0.13, tooth))
-    for x, y, z, r in ((0.55, 0.62, 0.52, 0.06), (0.30, -0.78, 0.66, 0.05), (0.72, -0.35, 0.40, 0.045), (-0.2, 0.80, 0.60, 0.07)):
-        bottom.append(sphere((x, y, z), r, lip, 10, 6))
+        for x, y, z in LEG_SOCKETS:
+            bottom.append(sphere((x, side * y, z), 0.12, skin, 14, 10))
+    for x, y, z, r in ((0.55, 0.62, 0.52, 0.07), (0.30, -0.78, 0.60, 0.06), (0.72, -0.35, 0.40, 0.05), (-0.3, 0.70, 0.45, 0.09), (-0.6, -0.4, 0.5, 0.08)):
+        bottom.append(sphere((x, y, z), r, skin, 10, 6))
     finish("Mouth_Bottom", bottom)
 
     top = [
-        hemisphere(centre, (rx, ry, rz), flesh, upper=True, lumps=0.05),
+        hemisphere(centre, (rx, ry, rz), skin, upper=True, lumps=0.07),
         hemisphere(centre, (rx * 0.95, ry * 0.95, rz * 0.45), lining, upper=True, inside_out=True),
-        ring((0.0, 0.0, 1.015), 1.0, 0.055, lip, scale=(rx * 0.97, ry * 0.97, 1.0)),
+        ring((0.0, 0.0, 1.015), 1.0, 0.05, gum, scale=(rx * 0.97, ry * 0.97, 1.0)),
         limb((-0.50, 0.0, 1.30), (-0.45, 0.0, 1.13), 0.04, 0.03, tongue, 8),
         sphere((-0.45, 0.0, 1.10), 0.055, tongue, 10, 6),
     ]
-    teeth(top, upper=True, missing={10}, golden=-1)
-    for side, look in ((-1.0, (0.10, 0.045, 0.03)), (1.0, (0.105, 0.03, -0.035))):
-        ball = Vector((0.07, side * 0.44, 2.20))
-        top.append(limb((-0.05, side * 0.30, 1.76), (0.05, side * 0.42, 2.12), 0.05, 0.035, flesh, 10))
-        top.append(sphere(ball, 0.13, white, 16, 10))
-        top.append(sphere(ball + Vector(look), 0.06, pupil, 12, 8))
-    for x, y, z, r in ((0.35, 0.55, 1.62, 0.06), (-0.45, -0.50, 1.60, 0.07), (0.60, -0.30, 1.52, 0.05)):
-        top.append(sphere((x, y, z), r, lip, 10, 6))
+    teeth(top, True, 23, 0.90, 0.036, 0.32, 2.0)
+    teeth(top, True, 15, 0.76, 0.028, 0.18, 7.0)
+    # No face. Just a scatter of eyes like a spider's, two of them lit.
+    eyes = ((18.0, 34.0, 0.075, True), (-16.0, 37.0, 0.07, True), (40.0, 30.0, 0.05, False), (-42.0, 28.0, 0.055, False),
+            (4.0, 52.0, 0.045, False), (-28.0, 54.0, 0.04, False), (30.0, 56.0, 0.04, False), (58.0, 42.0, 0.035, False))
+    for azimuth, elevation, radius, lit in eyes:
+        a = math.radians(azimuth)
+        e = math.radians(elevation)
+        on_skin = Vector((rx * math.cos(e) * math.cos(a), ry * math.cos(e) * math.sin(a), 1.0 + rz * math.sin(e)))
+        top.append(sphere(on_skin, radius, bead, 12, 8))
+        if lit:
+            out = Vector((math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e)))
+            top.append(sphere(on_skin + out * radius * 0.82, radius * 0.3, ember, 8, 6))
+    for x, y, z, r in ((0.35, 0.55, 1.62, 0.07), (-0.45, -0.50, 1.60, 0.09), (-0.2, 0.3, 1.82, 0.06)):
+        top.append(sphere((x, y, z), r, skin, 10, 6))
     finish("Mouth_Top", top)
 
 
@@ -459,7 +494,7 @@ def preview(path):
     stand("Librarian_Shush", 0.0, mirror=True)
     stand("Librarian_Arm", 0.0)
     stand("Mouth_Bottom", 2.6)
-    stand("Mouth_Top", 2.6, rotation=(0.0, math.radians(-32.0), 0.0))
+    stand("Mouth_Top", 2.6, rotation=(0.0, math.radians(-38.0), 0.0))
 
     scene = bpy.context.scene
     floor = bpy.data.meshes.new("floor")

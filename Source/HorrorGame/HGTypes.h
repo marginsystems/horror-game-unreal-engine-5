@@ -49,6 +49,9 @@ namespace HG
 
 	USceneComponent* AddPivot(AActor* Owner, USceneComponent* Parent, const FVector& RelLocation);
 
+	/** For painted things that move: pins the grime pattern to the object so it does not slide over it. */
+	void MarkMoving(UPrimitiveComponent* Comp);
+
 	/** Every sound the game plays. Each is Content/Audio/S_<name>, synthesised by Scripts/make_sounds.py. */
 	TConstArrayView<const TCHAR*> SoundNames();
 	USoundBase* Sound(const TCHAR* Name);

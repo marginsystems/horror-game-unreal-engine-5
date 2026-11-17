@@ -19,7 +19,7 @@ hunts you. Nothing you carry can hurt it, but everything you carry changes what 
 
 | | |
 | --- | --- |
-| ![Confetti in the office](docs/images/office-confetti.jpg) | ![Confetti in the mine](docs/images/mine-confetti.jpg) |
+| ![Confetti in the office](docs/images/office-confetti.jpg) | ![The Mouth, braced between the walls of the mine](docs/images/mine-confetti.jpg) |
 
 Weapons, all found on the floor:
 
@@ -33,9 +33,12 @@ Weapons, all found on the floor:
 
 ![Gary, the Librarian and the Mouth](docs/images/monsters.jpg)
 
-The three monsters are modelled in Blender by a script, and every sound is synthesised by
-another one: footsteps, the four weapons, a room tone for each place, and each monster's own
-noises (Gary's plastic feet, the Librarian's heels and her "SHHH", the Mouth's growl and the
+The three monsters are modelled in Blender by a script and move by code, with no canned
+animation. Gary is found somewhere new each time you look back: upright, down on his knuckles,
+head-down on a wall or hanging from the ceiling, with his face always turned to you. The
+Mouth walks on six legs that plant on the corridor walls. The Librarian's book twitches too
+fast to follow. Every sound is synthesised by another script: footsteps, the four weapons, a room tone for each place, and each monster's own
+noises (Gary's feet, the Librarian's heels and her "SHHH", the Mouth's growl and the
 bonk when it meets a wall). You hear them from where they are, so you can listen for them.
 The rooms, props and weapons are still basic shapes built in code.
 See [the game design](docs/GAME_DESIGN.md) for where it is going and [the asset list](docs/ASSETS.md)

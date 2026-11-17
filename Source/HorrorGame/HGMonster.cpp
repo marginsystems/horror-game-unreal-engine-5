@@ -17,6 +17,8 @@ namespace
 	const float LibrarianRun = 560.f;
 	const float MouthCreep = 240.f;
 	const float MouthCharge = 1150.f;
+	/** The Mouth's body rides this far above where the model was built, slung between its legs. */
+	const float MouthLift = 40.f;
 }
 
 AHGMonster::AHGMonster()
@@ -25,6 +27,12 @@ AHGMonster::AHGMonster()
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	Root->SetMobility(EComponentMobility::Movable);
 	SetRootComponent(Root);
+}
+
+FVector AHGMonster::Chest() const
+{
+	// Follows the posed body, so it is right when Gary is on a wall or the ceiling.
+	return Body ? Body->GetComponentTransform().TransformPosition(FVector(0, 0, 160)) : GetActorLocation() + FVector(0, 0, 160);
 }
 
 const TCHAR* AHGMonster::DisplayName() const
@@ -153,7 +161,7 @@ void AHGMonster::BuildWalker()
 	HG::AddModel(this, Head, TEXT("Gary_Head"));
 	for (const float Side : { -1.f, 1.f })
 	{
-		USceneComponent* Shoulder = HG::AddPivot(this, Body, FVector(0, Side * 27, 202));
+		USceneComponent* Shoulder = HG::AddPivot(this, Body, FVector(0, Side * 25, 202));
 		// One arm mesh, flipped for the other side so both thumbs point in.
 		HG::AddModel(this, Shoulder, TEXT("Gary_Arm"), FVector::ZeroVector, FRotator::ZeroRotator, FVector(1.f, Side, 1.f));
 		Arms.Add(Shoulder);
@@ -184,19 +192,138 @@ void AHGMonster::BuildLibrarian()
 
 void AHGMonster::BuildMouth()
 {
-	if (!HG::AddModel(this, Body, TEXT("Mouth_Bottom")))
+	if (!HG::AddModel(this, Body, TEXT("Mouth_Bottom"), FVector(0, 0, MouthLift)))
 	{
 		BuildStandIn(FLinearColor(0.28f, 0.02f, 0.03f), 190.f);
 	}
 	// The top jaw hinges at the back so it can chew.
-	Jaw = HG::AddPivot(this, Body, FVector(-60, 0, 100));
+	Jaw = HG::AddPivot(this, Body, FVector(-60, 0, 100 + MouthLift));
 	HG::AddModel(this, Jaw, TEXT("Mouth_Top"));
 
-	MakeGlow(FVector(130, 0, 110), FLinearColor(1.f, 0.1f, 0.05f), 260.f);
+	// Six legs, built here because they are solved every frame. The sockets match LEG_SOCKETS in make_models.py.
+	static const FVector Sockets[3] = { FVector(45, 74, 80), FVector(0, 86, 80), FVector(-45, 74, 80) };
+	static const float Reach[3] = { 170.f, 20.f, -140.f };
+	const FLinearColor Skin = FLinearColor::FromSRGBColor(FColor(0xA8, 0x8E, 0x84));
+	for (const float Side : { -1.f, 1.f })
+	{
+		for (int32 i = 0; i < 3; ++i)
+		{
+			FLeg Leg;
+			Leg.Hip = FVector(Sockets[i].X, Side * Sockets[i].Y, Sockets[i].Z + MouthLift);
+			Leg.Side = Side;
+			Leg.Along = Reach[i];
+			Leg.Group = (i + (Side > 0.f ? 1 : 0)) % 2;
+			Leg.Upper = HG::AddShape(this, Root, TEXT("Cylinder"), FVector::ZeroVector, FVector(0.15f, 0.15f, 1.f), Skin);
+			Leg.Lower = HG::AddShape(this, Root, TEXT("Cone"), FVector::ZeroVector, FVector(0.14f, 0.14f, 1.f), Skin * 0.75f);
+			Leg.Knee = HG::AddShape(this, Root, TEXT("Sphere"), FVector::ZeroVector, FVector(0.2f), Skin);
+			for (UStaticMeshComponent* Part : { Leg.Upper, Leg.Lower, Leg.Knee })
+			{
+				Part->SetUsingAbsoluteLocation(true);
+				Part->SetUsingAbsoluteRotation(true);
+				Part->SetUsingAbsoluteScale(true);
+				HG::MarkMoving(Part);
+			}
+			Legs.Add(Leg);
+		}
+	}
+
+	MakeGlow(FVector(130, 0, 110 + MouthLift), FLinearColor(1.f, 0.1f, 0.05f), 260.f);
 }
 
-void AHGMonster::Animate(float Dt)
+void AHGMonster::UpdateLegs(float Dt)
 {
+	if (Legs.Num() == 0 || !Level)
+	{
+		return;
+	}
+	const float UpperLength = 190.f;
+	const float LowerLength = 230.f;
+	const FVector Here = GetActorLocation();
+	const FVector Forward = GetActorForwardVector();
+	const FVector Right = GetActorRightVector();
+	const bool bFast = State == EState::Charge;
+	const float Stride = bFast ? 230.f : 120.f;
+	const float StepSeconds = bFast ? 0.07f : 0.16f;
+
+	int32 Stepping[2] = { 0, 0 };
+	for (const FLeg& Leg : Legs)
+	{
+		if (Leg.Step < 1.f) { ++Stepping[Leg.Group]; }
+	}
+
+	auto Place = [](UStaticMeshComponent* Part, const FVector& A, const FVector& B, float Thickness)
+	{
+		const FVector Span = B - A;
+		Part->SetWorldLocationAndRotation((A + B) * 0.5f, FRotationMatrix::MakeFromZ(Span).Rotator());
+		Part->SetWorldScale3D(FVector(Thickness, Thickness, FMath::Max(Span.Size(), 1.f) / 100.f));
+	};
+
+	for (FLeg& Leg : Legs)
+	{
+		// Where this foot would like to be: on the wall beside it if there is one in reach, else on the floor.
+		const FVector Out = Right * Leg.Side;
+		FVector Base = Here + Forward * (Leg.Along + (bFast ? 140.f : 40.f));
+		if (!Level->IsOpen(Level->ToTile(Base)))
+		{
+			Base = Here + Forward * (Leg.Along * 0.2f);
+		}
+		const float Wall = Level->WallDistance(Base, Out, 330.f);
+		const FVector Want = Wall >= 0.f
+			? Base + Out * (Wall - 6.f) + FVector(0.f, 0.f, 140.f + 55.f * Leg.Group + 0.25f * FMath::Abs(Leg.Along))
+			: Base + Out * 230.f;
+
+		if (!Leg.bPlaced || FVector::Dist(Leg.Foot, Want) > 900.f)
+		{
+			Leg.Foot = Want;
+			Leg.Step = 1.f;
+			Leg.bPlaced = true;
+		}
+		else if (Leg.Step < 1.f)
+		{
+			// Mid step: swing in an arc, away from the wall and up.
+			Leg.Step = FMath::Min(1.f, Leg.Step + Dt / StepSeconds);
+			const float Eased = FMath::SmoothStep(0.f, 1.f, Leg.Step);
+			Leg.Foot = FMath::Lerp(Leg.From, Want, Eased) + (FVector(0.f, 0.f, 55.f) - Out * 45.f) * FMath::Sin(PI * Leg.Step);
+		}
+		else
+		{
+			// Planted. It lets go once the body has left it behind, three legs at a time.
+			const float Behind = FVector::Dist(Leg.Foot, Want);
+			if ((Behind > Stride && Stepping[1 - Leg.Group] == 0) || Behind > Stride * 2.2f)
+			{
+				Leg.From = Leg.Foot;
+				Leg.Step = 0.f;
+				++Stepping[Leg.Group];
+			}
+		}
+
+		// Two bones from hip to foot, knee pushed up and out.
+		const FVector Hip = Body->GetComponentTransform().TransformPosition(Leg.Hip);
+		const FVector ToFoot = Leg.Foot - Hip;
+		const FVector Direction = ToFoot.GetSafeNormal(1.f, Out);
+		const float Distance = FMath::Clamp(ToFoot.Size(), 60.f, UpperLength + LowerLength - 4.f);
+		const FVector Foot = Hip + Direction * Distance;
+		const float CosHip = FMath::Clamp((UpperLength * UpperLength + Distance * Distance - LowerLength * LowerLength) / (2.f * UpperLength * Distance), -1.f, 1.f);
+		FVector Pole = FVector(0.f, 0.f, 1.f) + Out * 0.35f;
+		Pole = (Pole - Direction * FVector::DotProduct(Pole, Direction)).GetSafeNormal(1.f, FVector::UpVector);
+		FVector Knee = Hip + Direction * (UpperLength * CosHip) + Pole * (UpperLength * FMath::Sqrt(1.f - CosHip * CosHip));
+		Knee.Z = FMath::Min(Knee.Z, AHGLevel::WallHeight - 14.f);
+
+		Place(Leg.Upper, Hip, Knee, 0.15f);
+		Place(Leg.Lower, Knee, Foot, 0.14f);
+		Leg.Knee->SetWorldLocation(Knee);
+	}
+}
+
+void AHGMonster::Animate(float Dt, AHGPlayer* Player)
+{
+	UpdateLegs(Dt);
+	if (Head && Kind == EHGMonster::Walker)
+	{
+		// Whatever the rest of him is doing, and whichever way up, his face stays on you.
+		const FRotator Want = (Player->EyeLocation() - Head->GetComponentLocation()).Rotation();
+		Head->SetWorldRotation(FMath::RInterpTo(Head->GetComponentRotation(), Want, Dt, bWasObserved ? 3.f : 12.f));
+	}
 	if (Jaw)
 	{
 		// Breathing when idle, wide open for the wind-up, chewing on the way, slack when it has hit a wall.
@@ -212,10 +339,26 @@ void AHGMonster::Animate(float Dt)
 		// She listens by turning the book from side to side, and leans in when she has heard something.
 		const bool bChasing = State == EState::Investigate;
 		const FRotator Want(bChasing ? -14.f : 0.f, bChasing ? 0.f : FMath::Sin(Age * 0.9f) * 24.f, 0.f);
-		Head->SetRelativeRotation(FMath::RInterpTo(Head->GetRelativeRotation(), Want, Dt, 5.f));
+		// Every few seconds the book shakes too fast to follow, then goes back to listening.
+		TwitchIn -= Dt;
+		if (TwitchIn <= 0.f)
+		{
+			TwitchLeft = FMath::FRandRange(0.25f, 0.6f);
+			TwitchIn = FMath::FRandRange(1.5f, 5.f);
+		}
+		if (TwitchLeft > 0.f && StunLeft <= 0.f)
+		{
+			TwitchLeft -= Dt;
+			Head->SetRelativeRotation(FRotator(FMath::FRandRange(-14.f, 14.f), FMath::FRandRange(-45.f, 45.f), FMath::FRandRange(-32.f, 32.f)));
+		}
+		else
+		{
+			Head->SetRelativeRotation(FMath::RInterpTo(Head->GetRelativeRotation(), Want, Dt, 5.f));
+		}
 		if (Arms.Num() > 0)
 		{
-			Arms[0]->SetRelativeRotation(FRotator(FMath::Sin(Age * (bChasing ? 12.f : 3.f)) * (bChasing ? 30.f : 8.f), 0.f, 0.f));
+			// Her free arm trails behind her when she runs.
+			Arms[0]->SetRelativeRotation(FRotator((bChasing ? -55.f : 0.f) + FMath::Sin(Age * (bChasing ? 12.f : 3.f)) * (bChasing ? 22.f : 8.f), 0.f, 0.f));
 		}
 	}
 }
@@ -239,17 +382,59 @@ void AHGMonster::Shout(const TCHAR* Text, float Seconds, const FColor& Color)
 
 void AHGMonster::StrikeAPose()
 {
-	// Caught mid-step. Whatever his arms were doing, they are doing it now.
+	// Caught. Wherever he had got to is where he stays: upright, down on his knuckles,
+	// head-down on the nearest wall, or hanging from the ceiling.
+	const FVector Here = GetActorLocation();
+	const AHGPlayer* Player = Cast<AHGPlayer>(UGameplayStatics::GetPlayerPawn(this, 0));
+	FVector ToPlayer = Player ? (Player->GetActorLocation() - Here).GetSafeNormal2D() : GetActorForwardVector();
+	if (ToPlayer.IsNearlyZero()) { ToPlayer = GetActorForwardVector(); }
+
+	FVector WallDirection = FVector::ZeroVector;
+	float WallAt = -1.f;
+	for (const FVector& Direction : { FVector(1, 0, 0), FVector(-1, 0, 0), FVector(0, 1, 0), FVector(0, -1, 0) })
+	{
+		const float Distance = Level ? Level->WallDistance(Here, Direction, 260.f) : -1.f;
+		if (Distance >= 0.f && (WallAt < 0.f || Distance < WallAt))
+		{
+			WallAt = Distance;
+			WallDirection = Direction;
+		}
+	}
+
+	const float Choice = FMath::FRand();
+	FVector2D ArmPitch(-50.f, 150.f);
+	float ArmSpread = 40.f;
+	if (Choice < 0.35f && WallAt >= 0.f)
+	{
+		// Belly to the wall, head towards the floor, like something that came down it.
+		const FVector Spine = FVector(0, 0, -1).RotateAngleAxis(FMath::FRandRange(-70.f, 70.f), WallDirection);
+		const FVector Middle = Here + WallDirection * (WallAt - 20.f) + FVector(0, 0, 185.f);
+		Body->SetWorldLocationAndRotation(Middle - Spine * 130.f, FRotationMatrix::MakeFromXZ(WallDirection, Spine).Rotator());
+		ArmPitch = FVector2D(140.f, 178.f);
+		ArmSpread = 50.f;
+	}
+	else if (Choice < 0.55f)
+	{
+		// Standing on the ceiling, arms hanging down at you.
+		Body->SetWorldLocationAndRotation(FVector(Here.X, Here.Y, AHGLevel::WallHeight - 3.f), FRotationMatrix::MakeFromXZ(ToPlayer, FVector(0, 0, -1)).Rotator());
+		ArmPitch = FVector2D(105.f, 150.f);
+		ArmSpread = 30.f;
+	}
+	else if (Choice < 0.78f)
+	{
+		// Down on his knuckles.
+		Body->SetRelativeLocationAndRotation(FVector(-60.f, 0.f, 5.f), FRotator(-55.f, 0.f, FMath::FRandRange(-10.f, 10.f)));
+		ArmPitch = FVector2D(40.f, 70.f);
+		ArmSpread = 25.f;
+	}
+	else
+	{
+		Body->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator(FMath::FRandRange(-6.f, 10.f), 0.f, FMath::FRandRange(-12.f, 12.f)));
+	}
 	for (USceneComponent* Arm : Arms)
 	{
-		// Anywhere from hanging behind him to reaching straight up, by way of reaching for you.
-		Arm->SetRelativeRotation(FRotator(FMath::FRandRange(-50.f, 150.f), 0.f, FMath::FRandRange(-40.f, 40.f)));
+		Arm->SetRelativeRotation(FRotator(FMath::FRandRange(ArmPitch.X, ArmPitch.Y), 0.f, FMath::FRandRange(-ArmSpread, ArmSpread)));
 	}
-	if (Head)
-	{
-		Head->SetRelativeRotation(FRotator(FMath::FRandRange(-8.f, 12.f), FMath::FRandRange(-35.f, 35.f), FMath::FRandRange(-28.f, 28.f)));
-	}
-	Body->SetRelativeRotation(FRotator(FMath::FRandRange(-6.f, 10.f), 0.f, FMath::FRandRange(-12.f, 12.f)));
 	HG::PlayAt(this, TEXT("gary_freeze"), GetActorLocation(), 0.8f, FMath::FRandRange(0.9f, 1.15f));
 }
 
@@ -289,6 +474,7 @@ bool AHGMonster::HearNoise(const FVector& Location, float HoldSeconds, bool bFoo
 		{
 			Shout(TEXT("SHHH!"), 1.4f, FColor(200, 255, 170));
 			HG::PlayAt(this, TEXT("shush"), GetActorLocation(), 1.3f);
+			TwitchLeft = 0.5f;
 		}
 		else
 		{
@@ -393,7 +579,7 @@ void AHGMonster::Tick(float DeltaSeconds)
 
 	Age += DeltaSeconds;
 	StateTime += DeltaSeconds;
-	Animate(DeltaSeconds);
+	Animate(DeltaSeconds, Player);
 
 	if (Bubble && BubbleLeft > 0.f)
 	{
@@ -443,8 +629,7 @@ void AHGMonster::Tick(float DeltaSeconds)
 
 void AHGMonster::TickWalker(float Dt, AHGPlayer* Player)
 {
-	const FVector Chest = GetActorLocation() + FVector(0, 0, 160);
-	if (Player->CanObserve(Chest))
+	if (Player->CanObserve(Chest()))
 	{
 		if (!bWasObserved)
 		{
@@ -473,15 +658,11 @@ void AHGMonster::TickWalker(float Dt, AHGPlayer* Player)
 		RepathIn = 0.3f;
 	}
 
-	// He leans into it while he moves.
-	Body->SetRelativeRotation(FRotator(-8.f, 0.f, FMath::Sin(Age * 11.f) * 5.f));
-	if (Head)
-	{
-		Head->SetRelativeRotation(FRotator(8.f, 0.f, 0.f));
-	}
+	// Nobody is looking, so he drops forward and scuttles, knuckles on the floor.
+	Body->SetRelativeLocationAndRotation(FVector(-60.f, 0.f, 5.f), FRotator(-55.f + FMath::Sin(Age * 22.f) * 5.f, 0.f, FMath::Sin(Age * 11.f) * 8.f));
 	for (int32 i = 0; i < Arms.Num(); ++i)
 	{
-		Arms[i]->SetRelativeRotation(FRotator(FMath::Sin(Age * 9.f + i * PI) * 35.f, 0.f, 0.f));
+		Arms[i]->SetRelativeRotation(FRotator(55.f + FMath::Sin(Age * 18.f + i * PI) * 42.f, 0.f, 0.f));
 	}
 
 	const bool bArrived = Advance(WalkerSpeed, Dt);
@@ -502,7 +683,7 @@ void AHGMonster::TickLibrarian(float Dt, AHGPlayer* Player)
 			Face(NoiseLocation - GetActorLocation(), Dt, 6.f);
 			return;
 		}
-		Body->SetRelativeRotation(FRotator(-10.f, 0.f, FMath::Sin(Age * 14.f) * 4.f));
+		Body->SetRelativeRotation(FRotator(-26.f, 0.f, FMath::Sin(Age * 14.f) * 7.f));
 		if (Advance(LibrarianRun, Dt))
 		{
 			SetState(EState::Linger);
