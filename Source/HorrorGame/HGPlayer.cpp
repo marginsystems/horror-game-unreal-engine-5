@@ -338,11 +338,8 @@ void AHGPlayer::SmackFlashlight()
 
 void AHGPlayer::HandleKeys(APlayerController* PC, AHGGameMode* Game)
 {
-	if (PC->WasInputKeyJustPressed(EKeys::Escape))
-	{
-		UKismetSystemLibrary::QuitGame(this, PC, EQuitPreference::Quit, false);
-		return;
-	}
+	// Escape deliberately does nothing: it is pressed for too many other reasons (closing a
+	// dialog, cancelling dictation) to be allowed to end the game. Quit with Cmd+Q.
 	if (PC->WasInputKeyJustPressed(EKeys::F1)) { Game->Travel(EHGVariant::Clinic); return; }
 	if (PC->WasInputKeyJustPressed(EKeys::F2)) { Game->Travel(EHGVariant::Office); return; }
 	if (PC->WasInputKeyJustPressed(EKeys::F3)) { Game->Travel(EHGVariant::Mine); return; }

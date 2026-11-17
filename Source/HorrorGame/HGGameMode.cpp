@@ -10,6 +10,7 @@
 #include "HGLevel.h"
 #include "HGMonster.h"
 #include "HGPlayer.h"
+#include "InputKeyEventArgs.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
@@ -285,12 +286,21 @@ void AHGGameMode::TickBot(float Dt, AHGPlayer* Player)
 			Level->FindPath(Level->PlayerTile, Level->ExitTile, Out);
 			WalkFrom = Player->GetActorLocation();
 			WalkDirection = Out.Num() > 0 ? (Level->ToWorld(Out[0]) - Level->ToWorld(Level->PlayerTile)).GetSafeNormal() : FVector::ForwardVector;
+			// Hold W the way a keyboard would, so this checks the keys reach the player and not just that legs work.
+			Player->LookAt(Player->EyeLocation() + WalkDirection * 500.f);
+			if (APlayerController* PC = Cast<APlayerController>(Player->GetController()))
+			{
+				PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::W, IE_Pressed, 1.f));
+			}
 		}
 		Monster->Stun(0.5f);
-		Player->AddMovementInput(WalkDirection, 1.f);
 		WalkSeconds += Dt;
 		if (WalkSeconds >= 2.f)
 		{
+			if (APlayerController* PC = Cast<APlayerController>(Player->GetController()))
+			{
+				PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::W, IE_Released, 0.f));
+			}
 			const FVector Now = Player->GetActorLocation();
 			const float Walked = FVector::Dist2D(Now, WalkFrom);
 			const bool bStanding = FMath::Abs(Now.Z - 88.f) < 25.f;
@@ -507,7 +517,7 @@ void AHGHUD::DrawHUD()
 			Centered(Line, Y, 1.5f * S, FLinearColor::White);
 			Y += 40.f * S;
 		}
-		Centered(TEXT("R  try again      F1  clinic      F2  office      F3  mine      Esc  quit"), H * 0.8f, 1.2f * S, Dim);
+		Centered(TEXT("R  try again      F1  clinic      F2  office      F3  mine      Cmd+Q  quit"), H * 0.8f, 1.2f * S, Dim);
 		return;
 	}
 
