@@ -1,5 +1,7 @@
 #include "HGLevel.h"
 
+#include "Materials/MaterialInstanceDynamic.h"
+
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -107,7 +109,7 @@ namespace
 		return T;
 	}
 
-	UInstancedStaticMeshComponent* MakeTiles(AActor* Owner, USceneComponent* Parent, const FLinearColor& Color, bool bCollide)
+	UInstancedStaticMeshComponent* MakeTiles(AActor* Owner, USceneComponent* Parent, const FLinearColor& Color, bool bCollide, bool bFloor)
 	{
 		UInstancedStaticMeshComponent* Comp = NewObject<UInstancedStaticMeshComponent>(Owner);
 		Comp->SetMobility(EComponentMobility::Movable);
@@ -117,7 +119,12 @@ namespace
 		Comp->SetCollisionResponseToAllChannels(ECR_Block);
 		Comp->RegisterComponent();
 		Owner->AddInstanceComponent(Comp);
-		HG::Paint(Comp, Color);
+		// The building wears scanned surfaces: brick and plaster on walls, concrete on floors and ceilings.
+		if (UMaterialInstanceDynamic* Material = HG::Paint(Comp, Color))
+		{
+			Material->SetScalarParameterValue(TEXT("Textured"), 1.f);
+			Material->SetScalarParameterValue(TEXT("Floor"), bFloor ? 1.f : 0.f);
+		}
 		return Comp;
 	}
 }
@@ -148,9 +155,9 @@ void AHGLevel::Build(EHGVariant InVariant)
 	Height = Rows.Num();
 	Width = Rows[0].Len();
 
-	Walls = MakeTiles(this, Root, Theme.Wall, true);
-	Floors = MakeTiles(this, Root, Theme.Floor, true);
-	Ceilings = MakeTiles(this, Root, Theme.Ceiling, true);
+	Walls = MakeTiles(this, Root, Theme.Wall, true, false);
+	Floors = MakeTiles(this, Root, Theme.Floor, true, true);
+	Ceilings = MakeTiles(this, Root, Theme.Ceiling, true, true);
 
 	const FVector TileScale(Tile / 100.f, Tile / 100.f, 0.2f);
 	const FVector WallScale(Tile / 100.f, Tile / 100.f, WallHeight / 100.f);

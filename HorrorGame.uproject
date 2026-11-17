@@ -22,6 +22,11 @@
 		{
 			"Name": "AndroidFileServer",
 			"Enabled": false
+		},
+		{
+			"Name": "HorrorPrivate",
+			"Enabled": true,
+			"Optional": true
 		}
 	]
 }

@@ -1,12 +1,17 @@
 #include "HGMonster.h"
 
 #include "Components/AudioComponent.h"
+#include "Animation/AnimSequence.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "HGGameMode.h"
 #include "HGLevel.h"
 #include "HGPlayer.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/Texture.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Kismet/GameplayStatics.h"
 
 namespace
@@ -19,6 +24,8 @@ namespace
 	const float MouthCharge = 1150.f;
 	/** The Mouth's body rides this far above where the model was built, slung between its legs. */
 	const float MouthLift = 40.f;
+	/** Turns the imported human to face the way the monster walks. */
+	const float HumanYaw = -90.f;
 }
 
 AHGMonster::AHGMonster()
@@ -150,8 +157,98 @@ void AHGMonster::BuildStandIn(const FLinearColor& Color, float Height)
 	HG::AddShape(this, Body, TEXT("Cylinder"), FVector(0, 0, Height * 0.5f), FVector(0.5f, 0.5f, Height / 100.f), Color);
 }
 
+bool AHGMonster::BuildHuman(float Scale, const FLinearColor& Tint)
+{
+	// A rigged body and an animation library that were made for each other (Quaternius), kept in the
+	// private assets plugin. The library's own skeleton plays the clips; the body copies it by bone name.
+	const TCHAR* RigPath = TEXT("/HorrorPrivate/Characters/UAL1/UAL1_Standard/SkeletalMeshes/UAL1_Standard.UAL1_Standard");
+	const TCHAR* SkinFolder = TEXT("/HorrorPrivate/Characters/Human/Superhero_Male_FullBody/SkeletalMeshes");
+	USkeletalMesh* RigMesh = LoadObject<USkeletalMesh>(nullptr, RigPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!RigMesh)
+	{
+		return false;
+	}
+
+	Rig = NewObject<USkeletalMeshComponent>(this);
+	Rig->SetMobility(EComponentMobility::Movable);
+	Rig->SetupAttachment(Body);
+	Rig->SetSkeletalMeshAsset(RigMesh);
+	Rig->SetRelativeScale3D(FVector(Scale));
+	Rig->SetRelativeRotation(FRotator(0.f, HumanYaw, 0.f));
+	Rig->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Rig->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	Rig->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	Rig->SetVisibility(false);
+	Rig->RegisterComponent();
+	AddInstanceComponent(Rig);
+
+	int32 Skins = 0;
+	UTexture* PaleSkin = LoadObject<UTexture>(nullptr, TEXT("/HorrorPrivate/Characters/Human/Skins/T_Superhero_Male_Ligh.T_Superhero_Male_Ligh"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	// No eyebrows, and eyes with nothing in them.
+	for (const TCHAR* Part : { TEXT("SuperHero_Male"), TEXT("Eyes") })
+	{
+		const bool bEyes = FCString::Strcmp(Part, TEXT("Eyes")) == 0;
+		const FString AssetPath = FString::Printf(TEXT("%s/%s.%s"), SkinFolder, Part, Part);
+		USkeletalMesh* SkinMesh = LoadObject<USkeletalMesh>(nullptr, *AssetPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (!SkinMesh)
+		{
+			continue;
+		}
+		USkeletalMeshComponent* Skin = NewObject<USkeletalMeshComponent>(this);
+		Skin->SetMobility(EComponentMobility::Movable);
+		Skin->SetupAttachment(Rig);
+		Skin->SetSkeletalMeshAsset(SkinMesh);
+		Skin->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Skin->SetLeaderPoseComponent(Rig);
+		Skin->RegisterComponent();
+		AddInstanceComponent(Skin);
+		for (int32 i = 0; i < Skin->GetNumMaterials(); ++i)
+		{
+			if (UMaterialInstanceDynamic* Material = Skin->CreateDynamicMaterialInstance(i))
+			{
+				Material->SetVectorParameterValue(TEXT("BaseColorFactor"), bEyes ? FLinearColor(0.f, 0.f, 0.f) : Tint);
+				if (PaleSkin && !bEyes)
+				{
+					Material->SetTextureParameterValue(TEXT("BaseColorTexture"), PaleSkin);
+				}
+			}
+		}
+		++Skins;
+	}
+	if (Skins == 0)
+	{
+		// No body to wear: show the library's own mannequin instead.
+		Rig->SetVisibility(true);
+	}
+	PlayClip(TEXT("Idle_Loop"));
+	return true;
+}
+
+void AHGMonster::PlayClip(const TCHAR* Name, float Rate, bool bLoop)
+{
+	if (!Rig)
+	{
+		return;
+	}
+	if (Clip != FName(Name))
+	{
+		const FString AssetPath = FString::Printf(TEXT("/HorrorPrivate/Characters/UAL1/UAL1_Standard/SkeletalMeshes/UAL1_Standard%s.UAL1_Standard%s"), Name, Name);
+		if (UAnimSequence* Sequence = LoadObject<UAnimSequence>(nullptr, *AssetPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
+		{
+			Rig->PlayAnimation(Sequence, bLoop);
+			Clip = FName(Name);
+		}
+	}
+	Rig->SetPlayRate(Rate);
+}
+
 void AHGMonster::BuildWalker()
 {
+	if (BuildHuman(1.38f, FLinearColor(0.62f, 0.74f, 0.82f)))
+	{
+		MakeGlow(FVector(40, 0, 250), FLinearColor(0.8f, 0.9f, 1.f), 40.f);
+		return;
+	}
 	// A shop mannequin, modelled in Scripts/make_models.py. The pivots below match PIVOTS there.
 	if (!HG::AddModel(this, Body, TEXT("Gary_Body")))
 	{
@@ -420,7 +517,7 @@ void AHGMonster::StrikeAPose()
 		ArmPitch = FVector2D(105.f, 150.f);
 		ArmSpread = 30.f;
 	}
-	else if (Choice < 0.78f)
+	else if (Choice < 0.78f && !Rig)
 	{
 		// Down on his knuckles.
 		Body->SetRelativeLocationAndRotation(FVector(-60.f, 0.f, 5.f), FRotator(-55.f, 0.f, FMath::FRandRange(-10.f, 10.f)));
@@ -434,6 +531,11 @@ void AHGMonster::StrikeAPose()
 	for (USceneComponent* Arm : Arms)
 	{
 		Arm->SetRelativeRotation(FRotator(FMath::FRandRange(ArmPitch.X, ArmPitch.Y), 0.f, FMath::FRandRange(-ArmSpread, ArmSpread)));
+	}
+	if (Rig)
+	{
+		// Stopped dead, mid-stride, exactly as he was.
+		Rig->SetPlayRate(0.f);
 	}
 	HG::PlayAt(this, TEXT("gary_freeze"), GetActorLocation(), 0.8f, FMath::FRandRange(0.9f, 1.15f));
 }
@@ -658,6 +760,18 @@ void AHGMonster::TickWalker(float Dt, AHGPlayer* Player)
 		RepathIn = 0.3f;
 	}
 
+	if (Rig)
+	{
+		// Nobody is looking, so he runs.
+		Body->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+		PlayClip(TEXT("Sprint_Loop"), 1.15f);
+		const bool bArrivedRunning = Advance(WalkerSpeed, Dt);
+		if (State == EState::Investigate && bArrivedRunning)
+		{
+			SetState(EState::Linger);
+		}
+		return;
+	}
 	// Nobody is looking, so he drops forward and scuttles, knuckles on the floor.
 	Body->SetRelativeLocationAndRotation(FVector(-60.f, 0.f, 5.f), FRotator(-55.f + FMath::Sin(Age * 22.f) * 5.f, 0.f, FMath::Sin(Age * 11.f) * 8.f));
 	for (int32 i = 0; i < Arms.Num(); ++i)

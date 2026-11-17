@@ -5,6 +5,9 @@ Roughness, and Local. The colour is broken up by a noise pattern so nothing is a
 clean surface: walls look stained and skin looks blotched. The pattern is fixed in the world
 for the building (Local = 0) and fixed to the object for things that move (Local = 1), so it
 does not crawl over a monster as it walks.
+The building itself (Textured = 1) is covered in scanned surfaces from Content/Textures:
+damaged plaster and brick on the walls, worn concrete on floors and ceilings (Floor = 1),
+each with its normal and roughness maps, tinted by Color so every place keeps its own mood.
 Run it through Scripts/make-assets.sh; it replaces the asset if it exists.
 """
 import unreal
@@ -73,9 +76,65 @@ stained = lib.create_material_expression(material, unreal.MaterialExpressionMult
 lib.connect_material_expressions(color, "", stained, "A")
 lib.connect_material_expressions(dirt, "", stained, "B")
 
-lib.connect_material_property(stained, "", unreal.MaterialProperty.MP_BASE_COLOR)
+# Scanned surfaces for the building. Walls use the cube's own UVs once per face; floors repeat twice.
+textured = lib.create_material_expression(material, unreal.MaterialExpressionScalarParameter, -1300, 700)
+textured.set_editor_property("parameter_name", "Textured")
+textured.set_editor_property("default_value", 0.0)
+is_floor = lib.create_material_expression(material, unreal.MaterialExpressionScalarParameter, -1300, 840)
+is_floor.set_editor_property("parameter_name", "Floor")
+is_floor.set_editor_property("default_value", 0.0)
+wall_uv = lib.create_material_expression(material, unreal.MaterialExpressionTextureCoordinate, -1700, 900)
+floor_uv = lib.create_material_expression(material, unreal.MaterialExpressionTextureCoordinate, -1700, 1300)
+floor_uv.set_editor_property("u_tiling", 2.0)
+floor_uv.set_editor_property("v_tiling", 2.0)
+
+
+def sample(name, kind, uv, x, y):
+    texture = unreal.load_asset(f"/Game/Textures/{name}")
+    if not texture:
+        raise RuntimeError(f"HGASSET FAILED /Game/Textures/{name} is missing; run Scripts/make-assets.sh textures first")
+    node = lib.create_material_expression(material, unreal.MaterialExpressionTextureSample, x, y)
+    node.set_editor_property("texture", texture)
+    node.set_editor_property("sampler_type", kind)
+    lib.connect_material_expressions(uv, "", node, "UVs")
+    return node
+
+
+def blend(a, a_out, b, b_out, alpha, x, y):
+    node = lib.create_material_expression(material, unreal.MaterialExpressionLinearInterpolate, x, y)
+    lib.connect_material_expressions(a, a_out, node, "A")
+    lib.connect_material_expressions(b, b_out, node, "B")
+    lib.connect_material_expressions(alpha, "", node, "Alpha")
+    return node
+
+
+COLOUR = unreal.MaterialSamplerType.SAMPLERTYPE_COLOR
+NORMAL = unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL
+DATA = unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR
+surface_colour = blend(sample("T_wall_diff", COLOUR, wall_uv, -1400, 900), "RGB", sample("T_floor_diff", COLOUR, floor_uv, -1400, 1300), "RGB", is_floor, -1000, 1000)
+surface_normal = blend(sample("T_wall_nor", NORMAL, wall_uv, -1400, 1040), "RGB", sample("T_floor_nor", NORMAL, floor_uv, -1400, 1440), "RGB", is_floor, -1000, 1160)
+surface_rough = blend(sample("T_wall_rough", DATA, wall_uv, -1400, 1180), "R", sample("T_floor_rough", DATA, floor_uv, -1400, 1580), "R", is_floor, -1000, 1320)
+
+# The scans average about a third grey, so times three keeps each theme colour about as bright as before.
+gain = lib.create_material_expression(material, unreal.MaterialExpressionConstant, -1000, 880)
+gain.set_editor_property("r", 3.0)
+tint = lib.create_material_expression(material, unreal.MaterialExpressionMultiply, -800, 900)
+lib.connect_material_expressions(color, "", tint, "A")
+lib.connect_material_expressions(gain, "", tint, "B")
+tinted = lib.create_material_expression(material, unreal.MaterialExpressionMultiply, -640, 960)
+lib.connect_material_expressions(surface_colour, "", tinted, "A")
+lib.connect_material_expressions(tint, "", tinted, "B")
+
+flat = lib.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, -1000, 1500)
+flat.set_editor_property("constant", unreal.LinearColor(0.0, 0.0, 1.0, 1.0))
+final_colour = blend(stained, "", tinted, "", textured, -260, 700)
+final_normal = blend(flat, "", surface_normal, "", textured, -260, 1160)
+final_rough = blend(roughness, "", surface_rough, "", textured, -260, 1320)
+
+lib.connect_material_property(final_colour, "", unreal.MaterialProperty.MP_BASE_COLOR)
+lib.connect_material_property(final_normal, "", unreal.MaterialProperty.MP_NORMAL)
 lib.connect_material_property(emissive, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-lib.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+lib.connect_material_property(final_rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
 
 lib.recompile_material(material)
 saved = unreal.EditorAssetLibrary.save_asset(PATH)
