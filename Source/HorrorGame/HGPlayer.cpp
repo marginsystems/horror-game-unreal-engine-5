@@ -247,10 +247,10 @@ void AHGPlayer::ThrowHeld()
 	{
 		Lands = Floor.ImpactPoint;
 	}
-	Thrown = Held;
+	Tossed = Held;
 	Held = nullptr;
-	Thrown->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-	ThrowFrom = Thrown->GetActorLocation();
+	Tossed->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	ThrowFrom = Tossed->GetActorLocation();
 	ThrowTo = Lands;
 	ThrowAlong = 0.f;
 	UseKick = 1.f;
@@ -649,11 +649,11 @@ void AHGPlayer::Tick(float DeltaSeconds)
 
 	HandleKeys(PC, Game);
 
-	if (Thrown)
+	if (Tossed)
 	{
 		// The toy goes over in a low arc and squeaks when it comes down, which is the point of throwing it.
 		ThrowAlong = FMath::Min(1.f, ThrowAlong + DeltaSeconds / 0.6f);
-		Thrown->SetActorLocation(FMath::Lerp(ThrowFrom, ThrowTo, ThrowAlong) + FVector(0.f, 0.f, 70.f * FMath::Sin(ThrowAlong * PI)));
+		Tossed->SetActorLocation(FMath::Lerp(ThrowFrom, ThrowTo, ThrowAlong) + FVector(0.f, 0.f, 70.f * FMath::Sin(ThrowAlong * PI)));
 		if (ThrowAlong >= 1.f)
 		{
 			if (!HG::Extra(this, TEXT("squeak"), ThrowTo, 1.f, 1.f))
@@ -661,7 +661,7 @@ void AHGPlayer::Tick(float DeltaSeconds)
 				HG::Play(this, TEXT("pickup"), 0.6f, 1.3f);
 			}
 			Game->ToyLanded(ThrowTo);
-			Thrown = nullptr;
+			Tossed = nullptr;
 		}
 	}
 

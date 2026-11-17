@@ -104,7 +104,7 @@ private:
 
 	/** The toy in the air after a throw, and its flight. */
 	UPROPERTY()
-	TObjectPtr<class AHGToy> Thrown;
+	TObjectPtr<class AHGToy> Tossed;
 	FVector ThrowFrom = FVector::ZeroVector;
 	FVector ThrowTo = FVector::ZeroVector;
 	float ThrowAlong = 0.f;
