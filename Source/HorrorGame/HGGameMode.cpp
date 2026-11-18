@@ -750,13 +750,15 @@ void AHGGameMode::MakeChairProps()
 	Part(Syringe, Hand, TEXT("Cylinder"), Along * 16.8f, Lengthways, FVector(0.0025f, 0.0025f, 0.05f), Steel, false);
 	// The instrument: a handle, a long steel shaft and a small loop at the end.
 	Part(Instrument, Hand, TEXT("Cylinder"), Along * 8.f, Lengthways, FVector(0.013f, 0.013f, 0.1f), Dark, false);
-	Part(Instrument, Hand, TEXT("Cylinder"), Along * 18.f, Lengthways, FVector(0.0045f, 0.0045f, 0.11f), Steel, false);
-	Part(Instrument, Hand, TEXT("Sphere"), Along * 24.f, Lengthways, FVector(0.024f, 0.006f, 0.032f), Steel, false);
-	// Red on the loop and on her fingers the first time he sees, and more the second.
-	Part(BloodFirst, Hand, TEXT("Sphere"), Along * 23.6f, Lengthways, FVector(0.022f, 0.012f, 0.036f), Blood, false);
-	Part(BloodFirst, Hand, TEXT("Sphere"), Along * 7.f, Lengthways, FVector(0.05f, 0.032f, 0.06f), Blood, false);
-	Part(BloodSecond, Hand, TEXT("Sphere"), Along * 19.f, Lengthways, FVector(0.009f, 0.009f, 0.07f), Blood, false);
-	Part(BloodSecond, Hand, TEXT("Sphere"), Along * 10.f, Lengthways, FVector(0.065f, 0.04f, 0.08f), Blood, false);
+	Part(Instrument, Hand, TEXT("Cylinder"), Along * 19.f, Lengthways, FVector(0.006f, 0.006f, 0.13f), Steel, false);
+	Part(Instrument, Hand, TEXT("Sphere"), Along * 26.f, Lengthways, FVector(0.028f, 0.007f, 0.036f), Steel, false);
+	// The first time he sees it the loop is coated and it has run a little way down the shaft;
+	// the second time it is most of the shaft, with drops on the handle and her knuckles.
+	Part(BloodFirst, Hand, TEXT("Sphere"), Along * 26.f, Lengthways, FVector(0.03f, 0.009f, 0.038f), Blood, false);
+	Part(BloodFirst, Hand, TEXT("Cylinder"), Along * 23.f, Lengthways, FVector(0.0075f, 0.0075f, 0.045f), Blood, false);
+	Part(BloodSecond, Hand, TEXT("Cylinder"), Along * 18.f, Lengthways, FVector(0.008f, 0.008f, 0.1f), Blood, false);
+	Part(BloodSecond, Hand, TEXT("Sphere"), Along * 12.5f, Lengthways, FVector(0.016f, 0.016f, 0.012f), Blood, false);
+	Part(BloodSecond, Hand, TEXT("Sphere"), Along * 9.f + FVector(0.f, 0.f, 0.f), Lengthways, FVector(0.011f, 0.011f, 0.008f), Blood, false);
 
 	// The mask: over her nose and mouth, in her head's own frame, which faces the way she does.
 	const FName Head(TEXT("head"));
@@ -1741,10 +1743,17 @@ void AHGGameMode::TickChair(float Dt, AHGPlayer* Player)
 		Player->SetSaturation(ChairSaturation);
 		if (G < 2.6f)
 		{
-			// His eyes go to what is in her hand, with her masked face just above it.
+			// His eyes go to what is in her hand, with her masked face just beside it.
 			const USkeletalMeshComponent* Body = BodyOf(Second);
-			const FVector Hand = Body ? Body->GetSocketLocation(TEXT("hand_r")) : PersonPoint(Second, 30.f, 6.f, 118.f);
-			Player->TurnTowards(FMath::Lerp(Hand, SecondFace, 0.3f), Dt, 5.f);
+			FVector Tip = PersonPoint(Second, 30.f, 6.f, 130.f);
+			if (Body)
+			{
+				// Up the instrument from her wrist, towards the end of it, where the red is.
+				const FVector Wrist = Body->GetSocketLocation(TEXT("hand_r"));
+				const FName Finger = Body->GetBoneIndex(TEXT("middle_01_r")) != INDEX_NONE ? FName(TEXT("middle_01_r")) : FName(TEXT("middle_metacarpal_r"));
+				Tip = Wrist + (Body->GetSocketLocation(Finger) - Wrist).GetSafeNormal() * 22.f;
+			}
+			Player->TurnTowards(Tip, Dt, 5.f);
 		}
 		if (ChairStage == 2 && G > 0.5f && Once(14))
 		{
