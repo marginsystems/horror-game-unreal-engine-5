@@ -118,10 +118,6 @@ void AHGPlayer::BeginPlay()
 		Camera->PostProcessSettings.ColorContrast = FVector4(1.18f, 1.18f, 1.18f, 1.f);
 		Flashlight->SetIntensity(0.f);
 		HandLight->SetIntensity(0.f);
-		// Down on hands and knees he is under half a metre tall.
-		GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
-		GetCharacterMovement()->SetCrouchedHalfHeight(24.f);
-		GetCharacterMovement()->MaxWalkSpeedCrouched = 105.f;
 	}
 	if (Game && Game->GetVariant() == EHGVariant::Hospital)
 	{
@@ -206,7 +202,7 @@ void AHGPlayer::SetCarried(bool bOn)
 	GetCapsuleComponent()->SetCollisionEnabled(bOn ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
 	if (bOn)
 	{
-		UnCrouch();
+		SetCrawling(false, true);
 		GetCharacterMovement()->StopMovementImmediately();
 		GetCharacterMovement()->DisableMovement();
 	}
@@ -218,7 +214,7 @@ void AHGPlayer::SetCarried(bool bOn)
 
 float AHGPlayer::NoiseRadius() const
 {
-	if (bCarried || bIsCrouched)
+	if (bCarried || bCrawling)
 	{
 		return 0.f;
 	}
@@ -254,6 +250,53 @@ void AHGPlayer::ThrowHeld()
 	ThrowTo = Lands;
 	ThrowAlong = 0.f;
 	UseKick = 1.f;
+}
+
+namespace
+{
+	// A five-year-old: 110 standing, and under half a metre on his hands and knees.
+	constexpr float StandHalfHeight = 55.f;
+	constexpr float CrawlHalfHeight = 24.f;
+}
+
+bool AHGPlayer::SetCrawling(bool bOn, bool bForce)
+{
+	if (bCrawling == bOn)
+	{
+		return false;
+	}
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const float Radius = Capsule->GetUnscaledCapsuleRadius();
+	const float Shift = StandHalfHeight - CrawlHalfHeight;
+	if (!bOn && !bForce)
+	{
+		// Getting up waits until there is room to: not under a bed, not in the gap under the counter.
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(HGStandUp), false, this);
+		FCollisionResponseParams Response;
+		Capsule->InitSweepCollisionParams(Params, Response);
+		const FVector StandAt = GetActorLocation() + FVector(0.f, 0.f, Shift);
+		if (GetWorld()->OverlapBlockingTestByChannel(StandAt, FQuat::Identity, Capsule->GetCollisionObjectType(),
+			FCollisionShape::MakeCapsule(Radius - 1.f, StandHalfHeight - 1.f), Params, Response))
+		{
+			return false;
+		}
+	}
+	bCrawling = bOn;
+	// The capsule keeps its feet on the floor: it shrinks or grows, and its middle moves with it.
+	const float Rise = bOn ? -Shift : Shift;
+	Capsule->SetCapsuleSize(Radius, bOn ? CrawlHalfHeight : StandHalfHeight);
+	SetActorLocation(GetActorLocation() + FVector(0.f, 0.f, Rise), false, nullptr, ETeleportType::TeleportPhysics);
+	if (bForce)
+	{
+		// Picked up: whoever has him puts his eyes where they belong.
+		Camera->SetRelativeLocation(FVector(0.f, 0.f, 42.f));
+	}
+	else
+	{
+		// His eyes stay where they were this frame and then ease to the new height, never jumping with the capsule.
+		Camera->SetRelativeLocation(Camera->GetRelativeLocation() - FVector(0.f, 0.f, Rise));
+	}
+	return true;
 }
 
 void AHGPlayer::CarryEyesTo(const FVector& Eyes)
@@ -699,15 +742,11 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	{
 		// Hands and knees while the key is held. Getting up again waits until there is room to.
 		const bool bWantsDown = bCrawlAllowed && (bForceCrawl || PC->IsInputKeyDown(EKeys::LeftControl) || PC->IsInputKeyDown(EKeys::C));
-		if (bWantsDown && !bIsCrouched)
+		if (bWantsDown != bCrawling)
 		{
-			Crouch();
+			SetCrawling(bWantsDown);
 		}
-		else if (!bWantsDown && bIsCrouched)
-		{
-			UnCrouch();
-		}
-		const FVector Want(0.f, 0.f, bIsCrouched ? 4.f : 42.f);
+		const FVector Want(0.f, 0.f, bCrawling ? 4.f : 42.f);
 		Camera->SetRelativeLocation(FMath::VInterpTo(Camera->GetRelativeLocation(), Want, DeltaSeconds, 9.f));
 	}
 
@@ -716,7 +755,7 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	const float Right = (PC->IsInputKeyDown(EKeys::D) ? 1.f : 0.f) - (PC->IsInputKeyDown(EKeys::A) ? 1.f : 0.f);
 	const bool bSprint = PC->IsInputKeyDown(EKeys::LeftShift);
 	const bool bTiptoe = PC->IsInputKeyDown(EKeys::LeftControl) || PC->IsInputKeyDown(EKeys::C);
-	GetCharacterMovement()->MaxWalkSpeed = bChild ? (bSprint ? 300.f : 190.f) : (bTiptoe ? TiptoeSpeed : (bSprint ? SprintSpeed : WalkSpeed));
+	GetCharacterMovement()->MaxWalkSpeed = bChild ? (bCrawling ? 105.f : (bSprint ? 300.f : 190.f)) : (bTiptoe ? TiptoeSpeed : (bSprint ? SprintSpeed : WalkSpeed));
 	const FRotationMatrix Facing(FRotator(0.f, Control.Yaw, 0.f));
 	AddMovementInput(Facing.GetUnitAxis(EAxis::X), Forward);
 	AddMovementInput(Facing.GetUnitAxis(EAxis::Y), Right);
@@ -728,7 +767,7 @@ void AHGPlayer::Tick(float DeltaSeconds)
 	{
 		StepBank = 0.f;
 		const bool bRunning = Speed > WalkSpeed + 40.f;
-		if (bIsCrouched)
+		if (bCrawling)
 		{
 			// Hands and knees make no sound worth the name.
 			return;

@@ -35,8 +35,21 @@ public:
 	 * While holding, the arms keep one still pose (see SetStill) whatever the clip under them does, so
 	 * a walk does not swing the arms that have a child in them. InFold below 1 keeps the forearms
 	 * lower, under a child held face to face rather than up on a shoulder.
+	 *
+	 * bInShoulder is the other way to carry him: up against the left shoulder, walking. The left
+	 * forearm lies across the front of her waist for him to sit on and the right hand comes up
+	 * across her chest to his back, so neither arm is held out in front of her with nothing in it.
 	 */
-	void SetHold(float Alpha, float InFold = 1.f) { WantHold = FMath::Clamp(Alpha, 0.f, 1.f); HoldFold = InFold; }
+	void SetHold(float Alpha, float InFold = 1.f, bool bInShoulder = false)
+	{
+		WantHold = FMath::Clamp(Alpha, 0.f, 1.f);
+		HoldFold = InFold;
+		// Letting go keeps the shape the arms had, so they come down from it rather than from another.
+		if (Alpha > 0.f)
+		{
+			bShoulder = bInShoulder;
+		}
+	}
 
 	/** The clip whose first frame gives the arms their still pose when holding: a standing idle. */
 	void SetStill(UAnimSequence* InStill) { Still = InStill; }
@@ -83,6 +96,7 @@ private:
 	float WantHold = 0.f;
 	float Hold = 0.f;
 	float HoldFold = 1.f;
+	bool bShoulder = false;
 	float WantPresent = 0.f;
 	float Present = 0.f;
 	float Wrong = 0.f;

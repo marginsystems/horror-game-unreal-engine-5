@@ -75,13 +75,24 @@ public:
 	void Travel(EHGVariant To);
 
 	bool IsOver() const { return bOver; }
-	/** True while the engine is still preparing shaders, textures or meshes. The round waits for it. */
-	bool IsLoading() const { return LoadingLeft > 0; }
+	/**
+	 * True until the engine has finished preparing shaders, meshes and textures and has stayed
+	 * finished for a moment. The round waits for it. Once over it stays over: something compiling
+	 * later costs a hitch, never the loading screen flashing back.
+	 */
+	bool IsLoading() const { return !bReady; }
+	/** The black that lifts off the first picture once loading is over, 1 to 0. */
+	float LoadingCover = 1.f;
 	/** True while the opening shots play and the player has no control yet. */
 	bool IsCutscene() const { return CineLeft > 0.f; }
 	/** Seconds into the opening shots. */
 	float CineElapsed() const { return CineLength - CineLeft; }
 	int32 LoadingLeft = 0;
+	bool bReady = false;
+	/** Seconds since the last compile, seconds with nothing at all left to prepare, and seconds spent loading in all. */
+	float QuietFor = 0.f;
+	float SettledFor = 0.f;
+	float LoadingFor = 0.f;
 	bool HasWon() const { return bWon; }
 	EHGVariant GetVariant() const { return Variant; }
 	AHGLevel* GetLevel() const { return Level; }

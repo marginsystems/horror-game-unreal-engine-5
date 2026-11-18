@@ -56,7 +56,7 @@ public:
 	 * held). Crawling is slow and silent and fits under beds and through gaps no adult can follow.
 	 */
 	void SetCrawlAllowed(bool bOn) { bCrawlAllowed = bOn; }
-	bool IsCrawling() const { return bIsCrouched; }
+	bool IsCrawling() const { return bCrawling; }
 	/** For the self-play check and the pictures: crawl without a key held. */
 	void ForceCrawl(bool bOn) { bForceCrawl = bOn; }
 	/** How far the noise he is making right now carries: nothing crawling or still, a little walking, a long way running. */
@@ -101,6 +101,15 @@ private:
 	bool bCarried = false;
 	bool bCrawlAllowed = false;
 	bool bForceCrawl = false;
+	bool bCrawling = false;
+
+	/**
+	 * Down on his hands and knees, or back up. Up only where there is room to stand, unless forced
+	 * (being picked up). Returns whether it changed. The engine's own crouch is not used: standing
+	 * up restores the class default capsule, which is an adult's, and every crawl after that was
+	 * 64 cm tall, too tall for under a bed or the gap out of the first room.
+	 */
+	bool SetCrawling(bool bOn, bool bForce = false);
 
 	/** The toy in the air after a throw, and its flight. */
 	UPROPERTY()

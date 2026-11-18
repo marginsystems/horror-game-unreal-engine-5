@@ -25,6 +25,7 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 	float Time = 0.f;
 	float Present = 0.f;
 	float HoldFold = 1.f;
+	bool bShoulder = false;
 	float Yaw = 0.f;
 	float Pitch = 0.f;
 	float Hold = 0.f;
@@ -39,6 +40,7 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		Still = Person->Still;
 		Present = Person->Present;
 		HoldFold = Person->HoldFold;
+		bShoulder = Person->bShoulder;
 		Time = Person->Time;
 		Yaw = Person->Yaw;
 		Pitch = Person->Pitch;
@@ -166,12 +168,22 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 		}
 
 		// Carrying: the upper arms come forward, the forearms fold up and in across the chest.
+		// Angles are in degrees: the upper arm forward and in, then the forearm folded up from the elbow and in.
 		if (Hold > 0.002f)
 		{
 			struct FArm { FName Upper; FName Lower; float Side; };
+			struct FShape { float UpperForward; float UpperIn; float Fold; float In; };
 			static const FArm Arms[] = { { TEXT("upperarm_l"), TEXT("lowerarm_l"), 1.f }, { TEXT("upperarm_r"), TEXT("lowerarm_r"), -1.f } };
-			for (const FArm& Arm : Arms)
+			// Face to face: both forearms up in front of the chest.
+			static const FShape Front[] = { { 34.f, 0.f, 62.f, 42.f }, { 34.f, 0.f, 62.f, 42.f } };
+			// On the left shoulder: the left forearm level across her waist, a seat for him; the right
+			// arm across her chest with the hand up on his back, by her left shoulder.
+			static const FShape Shoulder[] = { { 26.f, 6.f, 64.f, 74.f }, { 46.f, 24.f, 82.f, 56.f } };
+			for (int32 i = 0; i < 2; ++i)
 			{
+				const FArm& Arm = Arms[i];
+				const FShape& Shape = bShoulder ? Shoulder[i] : Front[i];
+				const float FoldScale = bShoulder ? 1.f : HoldFold;
 				const FCompactPoseBoneIndex Upper = Find(Arm.Upper);
 				const FCompactPoseBoneIndex Lower = Find(Arm.Lower);
 				if (!Upper.IsValid() || !Lower.IsValid())
@@ -179,11 +191,13 @@ struct FHGPersonAnimProxy : public FAnimInstanceProxy
 					continue;
 				}
 				FTransform At = Posed.GetComponentSpaceTransform(Upper);
-				At.SetRotation((FQuat(FVector::XAxisVector, FMath::DegreesToRadians(34.f * Hold)) * At.GetRotation()).GetNormalized());
+				const FQuat Forward(FVector::XAxisVector, FMath::DegreesToRadians(Shape.UpperForward * Hold));
+				const FQuat UpperIn(FVector::ZAxisVector, FMath::DegreesToRadians(Shape.UpperIn * Hold * Arm.Side));
+				At.SetRotation((UpperIn * Forward * At.GetRotation()).GetNormalized());
 				Posed.SetComponentSpaceTransform(Upper, At);
 				At = Posed.GetComponentSpaceTransform(Lower);
-				const FQuat Fold(FVector::XAxisVector, FMath::DegreesToRadians(62.f * Hold * HoldFold));
-				const FQuat Inward(FVector::ZAxisVector, FMath::DegreesToRadians(42.f * Hold * Arm.Side));
+				const FQuat Fold(FVector::XAxisVector, FMath::DegreesToRadians(Shape.Fold * Hold * FoldScale));
+				const FQuat Inward(FVector::ZAxisVector, FMath::DegreesToRadians(Shape.In * Hold * Arm.Side));
 				At.SetRotation((Inward * Fold * At.GetRotation()).GetNormalized());
 				Posed.SetComponentSpaceTransform(Lower, At);
 			}

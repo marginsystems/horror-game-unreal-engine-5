@@ -38,6 +38,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "ShaderCompiler.h"
+#include "ContentStreaming.h"
 #if WITH_EDITOR
 #include "AssetCompilingManager.h"
 #endif
@@ -76,6 +77,15 @@ void AHGGameMode::InitGame(const FString& MapName, const FString& Options, FStri
 		{
 			GEngine->Exec(GetWorld(), Command);
 		}
+	}
+
+	// Hair keeps its combed shape instead of being simulated: every person's hair ran its own physics
+	// on the graphics card each frame, and those simulations compiled only after the loading screen had
+	// gone, so the start stuttered. A bigger texture pool stops five people's faces and clothes from
+	// pushing each other's sharp textures out and back in as he looks around.
+	for (const TCHAR* Command : { TEXT("r.HairStrands.Simulation 0"), TEXT("r.Streaming.PoolSize 2500") })
+	{
+		GEngine->Exec(GetWorld(), Command);
 	}
 
 	// Engine notices ("Preparing mesh distance fields...") have no place on a horror game's screen.
@@ -968,7 +978,8 @@ void AHGGameMode::TickHandover(float Dt, AHGPlayer* Player)
 			if (WomanAnim)
 			{
 				WomanAnim->SetClip(PersonIdle);
-				WomanAnim->SetHold(1.f);
+				// Up on her left shoulder, the way he is carried down the corridor.
+				WomanAnim->SetHold(1.f, 1.f, true);
 			}
 			if (MomFaceAnim)
 			{
@@ -3049,15 +3060,41 @@ void AHGGameMode::Tick(float DeltaSeconds)
 	}
 
 	// Until everything on screen is ready the round does not start: nothing hunts you and no clock runs.
-	LoadingLeft = GShaderCompilingManager ? GShaderCompilingManager->GetNumRemainingJobs() : 0;
-#if WITH_EDITOR
-	LoadingLeft += FAssetCompilingManager::Get().GetNumRemainingAssets();
-#endif
-	if (IsLoading())
+	// The scene draws behind the black all the while, so lighting, shadows and textures settle there
+	// and not in front of him.
+	if (!bReady)
 	{
-		ShotTimer = 0.f;
-		return;
+		const float RealDt = FApp::GetDeltaTime();
+		LoadingFor += RealDt;
+		LoadingLeft = GShaderCompilingManager ? GShaderCompilingManager->GetNumRemainingJobs() : 0;
+#if WITH_EDITOR
+		LoadingLeft += FAssetCompilingManager::Get().GetNumRemainingAssets();
+#endif
+		// Textures still on their way in count too, but only for a while once the compiling is done:
+		// a full streaming pool can keep asking for more for ever.
+		QuietFor = LoadingLeft == 0 ? QuietFor + RealDt : 0.f;
+		const int32 Textures = IStreamingManager::Get().GetNumWantingResources();
+		if (QuietFor < 8.f)
+		{
+			LoadingLeft += Textures;
+		}
+		// Work keeps turning up for a moment after the last job (a new shader brings a new texture):
+		// the screen only lifts once everything has been quiet for a second and a half.
+		SettledFor = LoadingLeft == 0 ? SettledFor + RealDt : 0.f;
+		const bool bQuiet = SettledFor >= 1.5f;
+		if (!bQuiet)
+		{
+			ShotTimer = 0.f;
+			return;
+		}
+		bReady = true;
+		LoadingLeft = 0;
+		// Pictures for the self-check are taken without the fade in front of them.
+		LoadingCover = bShots ? 0.f : 1.f;
+		UE_LOG(LogHG, Log, TEXT("HGTEST LOADED seconds=%.1f textures_waiting=%d"), LoadingFor, Textures);
 	}
+	// The black lifts off the first picture instead of vanishing in one frame.
+	LoadingCover = FMath::FInterpConstantTo(LoadingCover, 0.f, DeltaSeconds, 1.25f);
 
 	++FramesSeen;
 	SecondsSeen += FApp::GetDeltaTime();
@@ -3760,7 +3797,7 @@ void AHGHUD::DrawHUD()
 	{
 		DrawRect(FLinearColor::Black, 0.f, 0.f, W, H);
 		Centered(TEXT("LOADING"), H * 0.42f, 2.6f * S, FLinearColor::White, FaceLight);
-		Centered(FString::Printf(TEXT("%d things left to prepare. The first start of a new place takes a while."), Game->LoadingLeft), H * 0.54f, 1.1f * S, Dim);
+		Centered(Game->LoadingLeft > 0 ? FString::Printf(TEXT("%d things left to prepare. The first start of a new place takes a while."), Game->LoadingLeft) : FString(TEXT("Almost ready.")), H * 0.54f, 1.1f * S, Dim);
 		return;
 	}
 
@@ -3779,9 +3816,9 @@ void AHGHUD::DrawHUD()
 		// A jolt goes through the picture: dark for an instant, then back.
 		DrawRect(FLinearColor(0.08f, 0.f, 0.f, 0.32f * Game->Flinch), 0.f, 0.f, W, H);
 	}
-	if (Game->BlackOut > 0.f)
+	if (FMath::Max(Game->BlackOut, Game->LoadingCover) > 0.f)
 	{
-		DrawRect(FLinearColor(0.f, 0.f, 0.f, Game->BlackOut), 0.f, 0.f, W, H);
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, FMath::Max(Game->BlackOut, Game->LoadingCover)), 0.f, 0.f, W, H);
 	}
 
 	if (Game->ClosingPage >= 0 && !Game->IsOver())
